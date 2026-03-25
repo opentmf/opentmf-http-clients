@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients).
 For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-opentmf-web-clients) section in the README.
 
+## [2.1.0] — 2026-03-25
+
+### Changed
+- Renamed `RestTemplateUtil` to `SyncClientUtil` — the class has no dependency on `RestTemplate` and works equally with both `RestClient` and `RestTemplate`. The new name better reflects its purpose as the synchronous counterpart to `WebClientUtil`.
+- Renamed `BearerWebClientException` to `BearerTokenException` — the class has no dependency on `WebClient` and is a generic bearer-token error. The old name was a leftover from the predecessor project `opentmf-web-clients`.
+
+---
+
 ## [2.0.0] — 2026-03-25
 
 Initial release of `opentmf-http-clients`, a complete rewrite of the predecessor `opentmf-web-clients`.
@@ -27,7 +35,7 @@ Initial release of `opentmf-http-clients`, a complete rewrite of the predecessor
 - `OpenTmfClientResponseException` — base exception for HTTP errors, carrying status code, message, and raw response body.
 - `OpenTmfClientNotFoundException` — specialized 404 exception.
 - `ErrorBodyExtractor` — intelligent error message extraction from JSON bodies (RFC 7807, TMF, OAuth2, Spring Boot default formats) with safe fallbacks for plain text and binary.
-- `RestTemplateUtil` — synchronous retry (`executeWithRetry`), error handling (`handleError`), `emptyOn404()`, `emptyOn(HttpStatus...)`). Works with both `RestClient` and `RestTemplate`.
+- `SyncClientUtil` — synchronous retry (`executeWithRetry`), error handling (`handleError`), `emptyOn404()`, `emptyOn(HttpStatus...)`). Works with both `RestClient` and `RestTemplate`.
 - `OpenTmfRestClientStatusHandler` — `RestClient.ResponseSpec.ErrorHandler` for RestClient auto-wrapping.
 - `WebClientUtil` — reactive retry, error handling, `emptyOn404()`, `emptyOn(HttpStatus...)`.
 - `HttpClientUtil` — shared logic (retryable status codes, `remap()` for domain-specific exception conversion).

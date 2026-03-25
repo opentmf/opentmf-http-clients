@@ -12,7 +12,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockserver.integration.ClientAndServer;
-import org.opentmf.client.bearer.exception.BearerWebClientException;
+import org.opentmf.client.bearer.exception.BearerTokenException;
 import org.opentmf.client.bearer.model.TokenEntry;
 import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
@@ -111,7 +111,7 @@ class BearerTokenServiceIT {
     var badService = new BearerTokenServiceImpl(badConfig, tokenCache, badTokenClient);
 
     StepVerifier.create(badService.getToken())
-        .expectError(BearerWebClientException.class)
+        .expectError(BearerTokenException.class)
         .verify();
   }
 

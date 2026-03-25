@@ -6,7 +6,7 @@ import static org.springframework.util.StringUtils.hasText;
 import java.net.URI;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.opentmf.client.bearer.exception.BearerWebClientException;
+import org.opentmf.client.bearer.exception.BearerTokenException;
 import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.reactive.util.WebClientUtil;
@@ -51,7 +51,7 @@ public class BearerTokenClientImpl implements BearerTokenClient {
         })
         .retrieve()
         .onStatus(HttpStatusCode::isError,
-            clientResponse -> WebClientUtil.handleError(clientResponse, BearerWebClientException.class))
+            clientResponse -> WebClientUtil.handleError(clientResponse, BearerTokenException.class))
         .bodyToMono(String.class)
         .map(body -> (ObjectNode) JacksonUtil.jsonToTree(body))
         .retryWhen(

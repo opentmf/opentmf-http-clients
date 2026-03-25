@@ -13,13 +13,13 @@ import org.junit.jupiter.api.Test;
 import org.opentmf.client.common.exception.OpenTmfClientNotFoundException;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.client.rest.util.OpenTmfRestClientStatusHandler;
-import org.opentmf.client.rest.util.RestTemplateUtil;
+import org.opentmf.client.rest.util.SyncClientUtil;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.web.client.RestClient;
 
 /**
- * Integration tests that prove {@link RestClient} works with {@link RestTemplateUtil} helper
+ * Integration tests that prove {@link RestClient} works with {@link SyncClientUtil} helper
  * methods and with the {@link OpenTmfRestClientStatusHandler} error handler.
  */
 class RestClientUtilIT {
@@ -89,7 +89,7 @@ class RestClientUtilIT {
   void executeWithRetry_succeedsOnFirstAttempt() {
     get(API_PATH, 1, "\"ok\"", HttpStatus.OK);
 
-    String result = RestTemplateUtil.executeWithRetry(
+    String result = SyncClientUtil.executeWithRetry(
         () -> restClient.get().uri(API_PATH).retrieve().body(String.class),
         3, RETRY_WAIT);
 
@@ -101,7 +101,7 @@ class RestClientUtilIT {
     get(API_PATH, 5, "unavailable", HttpStatus.SERVICE_UNAVAILABLE);
     get(API_PATH, 1, "\"recovered\"", HttpStatus.OK);
 
-    String result = RestTemplateUtil.executeWithRetry(
+    String result = SyncClientUtil.executeWithRetry(
         () -> restClient.get().uri(API_PATH).retrieve().body(String.class),
         3, RETRY_WAIT);
 
@@ -113,7 +113,7 @@ class RestClientUtilIT {
     get(API_PATH, 1, "forbidden", HttpStatus.FORBIDDEN);
 
     assertThatThrownBy(() ->
-        RestTemplateUtil.executeWithRetry(
+        SyncClientUtil.executeWithRetry(
             () -> restClient.get().uri(API_PATH).retrieve().body(String.class),
             3, RETRY_WAIT))
         .isInstanceOf(OpenTmfClientResponseException.class)
@@ -126,7 +126,7 @@ class RestClientUtilIT {
     get(API_PATH, 10, "unavailable", HttpStatus.SERVICE_UNAVAILABLE);
 
     assertThatThrownBy(() ->
-        RestTemplateUtil.executeWithRetry(
+        SyncClientUtil.executeWithRetry(
             () -> restClient.get().uri(API_PATH).retrieve().body(String.class),
             3, RETRY_WAIT))
         .isInstanceOf(OpenTmfClientResponseException.class)
@@ -138,7 +138,7 @@ class RestClientUtilIT {
   void emptyOn404_returnsEmptyOnNotFound() {
     get(API_PATH, 1, "{\"msg\":\"no such resource\"}", HttpStatus.NOT_FOUND);
 
-    Optional<String> result = RestTemplateUtil.emptyOn404(
+    Optional<String> result = SyncClientUtil.emptyOn404(
         () -> restClient.get().uri(API_PATH).retrieve().body(String.class));
 
     assertThat(result).isEmpty();
@@ -148,7 +148,7 @@ class RestClientUtilIT {
   void emptyOn404_returnsValueOnSuccess() {
     get(API_PATH, 1, "\"found\"", HttpStatus.OK);
 
-    Optional<String> result = RestTemplateUtil.emptyOn404(
+    Optional<String> result = SyncClientUtil.emptyOn404(
         () -> restClient.get().uri(API_PATH).retrieve().body(String.class));
 
     assertThat(result).contains("\"found\"");
@@ -159,7 +159,7 @@ class RestClientUtilIT {
     get(API_PATH, 1, "forbidden", HttpStatus.FORBIDDEN);
 
     assertThatThrownBy(() ->
-        RestTemplateUtil.emptyOn404(
+        SyncClientUtil.emptyOn404(
             () -> restClient.get().uri(API_PATH).retrieve().body(String.class)))
         .isInstanceOf(OpenTmfClientResponseException.class);
   }
@@ -168,7 +168,7 @@ class RestClientUtilIT {
   void emptyOn_returnsEmptyOnMatchingStatus() {
     get(API_PATH, 1, "gone", HttpStatus.GONE);
 
-    Optional<String> result = RestTemplateUtil.emptyOn(
+    Optional<String> result = SyncClientUtil.emptyOn(
         () -> restClient.get().uri(API_PATH).retrieve().body(String.class),
         HttpStatus.NOT_FOUND, HttpStatus.GONE);
 
@@ -180,7 +180,7 @@ class RestClientUtilIT {
     get(API_PATH, 1, "forbidden", HttpStatus.FORBIDDEN);
 
     assertThatThrownBy(() ->
-        RestTemplateUtil.emptyOn(
+        SyncClientUtil.emptyOn(
             () -> restClient.get().uri(API_PATH).retrieve().body(String.class),
             HttpStatus.NOT_FOUND, HttpStatus.GONE))
         .isInstanceOf(OpenTmfClientResponseException.class);

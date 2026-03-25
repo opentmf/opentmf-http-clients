@@ -53,7 +53,7 @@ opentmf-http-clients/                          # Root (POM)
 │   │   ├── NoOpSyncTokenService               # No-auth token service
 │   │   └── SyncBasicTokenServiceImpl          # Basic auth token service
 │   └── util/
-│       ├── RestTemplateUtil                   # Retry, error handling, emptyOn404, emptyOn
+│       ├── SyncClientUtil                   # Retry, error handling, emptyOn404, emptyOn
 │       ├── OpenTmfResponseErrorHandler        # ResponseErrorHandler for RestTemplate auto-wrapping
 │       ├── OpenTmfRestClientStatusHandler     # ErrorHandler for RestClient auto-wrapping
 │       └── GzipClientHttpRequestInterceptor   # Transparent gzip decompression for JDK HttpClient
@@ -72,7 +72,7 @@ opentmf-http-clients/                          # Root (POM)
 │   ├── model/
 │   │   └── TokenEntry                         # Cache entry: token data + computed TTL
 │   ├── exception/
-│   │   └── BearerWebClientException           # Bearer-specific exception
+│   │   └── BearerTokenException           # Bearer-specific exception
 │   ├── reactive/
 │   │   ├── BearerTokenClient                  # Interface
 │   │   ├── BearerTokenClientImpl              # WebClient-based token retrieval
@@ -237,7 +237,7 @@ Both carry: HTTP status code, human-readable message (extracted via `ErrorBodyEx
 
 Retries are **opt-in** at call sites (not automatic):
 - Reactive: `WebClientUtil.retry(numRetries, retryWaitDuration)`
-- REST: `RestTemplateUtil.executeWithRetry(supplier, numRetries, retryWaitDuration)`
+- REST: `SyncClientUtil.executeWithRetry(supplier, numRetries, retryWaitDuration)`
 
 Retryable HTTP status codes: 408, 429, 500, 502, 503, 504, 509.
 
@@ -293,7 +293,7 @@ Users pick the starter matching their stack:
 ### Per-module unit/integration tests
 
 - **common**: `ClientPropertiesTest`, `ClientPropertiesNestedModelsTest`, `ErrorBodyExtractorTest`, `TokenUtilTest`, `HttpClientUtilTest`
-- **rest**: `RestTemplateUtilTest`, `OpenTmfResponseErrorHandlerTest`, `OpenTmfRestClientStatusHandlerTest`, `GzipClientHttpRequestInterceptorTest`
+- **rest**: `SyncClientUtilTest`, `OpenTmfResponseErrorHandlerTest`, `OpenTmfRestClientStatusHandlerTest`, `GzipClientHttpRequestInterceptorTest`
 - **reactive**: `WebClientUtilTest`, `WebClientConfigUtilIT`
 - **bearer-provider**: `BearerTokenServiceIT`, `SyncBearerTokenServiceIT`, `TokenEntryTest`, `TokenCacheExpiryTest`, mock impl tests
 - **autoconfigure**: `AutoConfigurationIT`, `OpentmfHttpClientsConfigTest`, `JdkRestTemplateFactoryTest`, `ApacheRestTemplateFactoryTest`

@@ -6,20 +6,20 @@ import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.springframework.http.HttpStatusCode;
 
 @Getter
-public class BearerWebClientException extends OpenTmfClientResponseException {
+public class BearerTokenException extends OpenTmfClientResponseException {
 
   @Serial
   private static final long serialVersionUID = 3L;
 
-  public BearerWebClientException(HttpStatusCode httpStatus) {
+  public BearerTokenException(HttpStatusCode httpStatus) {
     super(httpStatus);
   }
 
-  public BearerWebClientException(HttpStatusCode httpStatusCode, String message) {
+  public BearerTokenException(HttpStatusCode httpStatusCode, String message) {
     super(httpStatusCode, message);
   }
 
-  public BearerWebClientException(HttpStatusCode httpStatusCode, String message, Throwable cause) {
+  public BearerTokenException(HttpStatusCode httpStatusCode, String message, Throwable cause) {
     super(httpStatusCode, message, cause);
   }
 }

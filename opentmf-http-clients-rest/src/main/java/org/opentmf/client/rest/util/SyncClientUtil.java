@@ -23,11 +23,11 @@ import org.springframework.web.client.RestClientResponseException;
  * {@link OpenTmfClientResponseException}) rather than on specific client APIs.</p>
  */
 @Slf4j
-public final class RestTemplateUtil {
+public final class SyncClientUtil {
 
   private static final double DEFAULT_JITTER_FACTOR = 0.0d;
 
-  private RestTemplateUtil() {
+  private SyncClientUtil() {
   }
 
   public static OpenTmfClientResponseException handleError(RestClientResponseException ex,

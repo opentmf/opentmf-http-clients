@@ -8,7 +8,7 @@ import static org.opentmf.client.test.util.MockServerUtils.resetMockServer;
 import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.opentmf.client.bearer.exception.BearerWebClientException;
+import org.opentmf.client.bearer.exception.BearerTokenException;
 import org.opentmf.client.common.exception.OpenTmfClientNotFoundException;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.client.common.util.HttpClientUtil;
@@ -42,7 +42,7 @@ class WebClientUtilIT {
         .uri(API_PATH)
         .exchangeToMono(response -> {
           if (response.statusCode().isError()) {
-            return WebClientUtil.handleError(response, BearerWebClientException.class)
+            return WebClientUtil.handleError(response, BearerTokenException.class)
                 .flatMap(ex -> Mono.<String>error(ex));
           }
           return response.bodyToMono(String.class);
@@ -50,8 +50,8 @@ class WebClientUtilIT {
 
     StepVerifier.create(result)
         .expectErrorSatisfies(ex -> {
-          assertThat(ex).isInstanceOf(BearerWebClientException.class);
-          var bex = (BearerWebClientException) ex;
+          assertThat(ex).isInstanceOf(BearerTokenException.class);
+          var bex = (BearerTokenException) ex;
           assertThat(bex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
           assertThat(bex.getRawStatusCode()).isEqualTo(404);
           assertThat(bex.getMessage()).contains("not found");
@@ -103,13 +103,13 @@ class WebClientUtilIT {
 
   @Test
   void shouldRetryOn_openTmfExceptionWithRetryableStatus_returnsTrue() {
-    var ex = new BearerWebClientException(HttpStatus.BAD_GATEWAY, "upstream error");
+    var ex = new BearerTokenException(HttpStatus.BAD_GATEWAY, "upstream error");
     assertThat(WebClientUtil.shouldRetryOn(ex)).isTrue();
   }
 
   @Test
   void shouldRetryOn_openTmfExceptionWithNonRetryableStatus_returnsFalse() {
-    var ex = new BearerWebClientException(HttpStatus.FORBIDDEN, "access denied");
+    var ex = new BearerTokenException(HttpStatus.FORBIDDEN, "access denied");
     assertThat(WebClientUtil.shouldRetryOn(ex)).isFalse();
   }
 
@@ -234,7 +234,7 @@ class WebClientUtilIT {
         .uri(API_PATH)
         .exchangeToMono(response -> {
           if (response.statusCode().isError()) {
-            return WebClientUtil.handleError(response, BearerWebClientException.class)
+            return WebClientUtil.handleError(response, BearerTokenException.class)
                 .flatMap(ex -> Mono.<String>error(ex));
           }
           return response.bodyToMono(String.class);
@@ -254,7 +254,7 @@ class WebClientUtilIT {
         .uri(API_PATH)
         .exchangeToMono(response -> {
           if (response.statusCode().isError()) {
-            return WebClientUtil.handleError(response, BearerWebClientException.class)
+            return WebClientUtil.handleError(response, BearerTokenException.class)
                 .flatMap(ex -> Mono.<String>error(ex));
           }
           return response.bodyToMono(String.class);
@@ -263,8 +263,8 @@ class WebClientUtilIT {
 
     StepVerifier.create(result)
         .expectErrorSatisfies(ex -> {
-          assertThat(ex).isInstanceOf(BearerWebClientException.class);
-          assertThat(((BearerWebClientException) ex).getStatusCode())
+          assertThat(ex).isInstanceOf(BearerTokenException.class);
+          assertThat(((BearerTokenException) ex).getStatusCode())
               .isEqualTo(HttpStatus.FORBIDDEN);
           assertThat(ex.getMessage()).contains("forbidden");
         })
@@ -413,10 +413,10 @@ class WebClientUtilIT {
             autoWrappedWebClient.get().uri(API_PATH)
                 .retrieve().bodyToMono(String.class)
                 .onErrorMap(OpenTmfClientResponseException.class,
-                    e -> HttpClientUtil.remap(e, BearerWebClientException.class)))
+                    e -> HttpClientUtil.remap(e, BearerTokenException.class)))
         .expectErrorSatisfies(ex -> {
-          assertThat(ex).isInstanceOf(BearerWebClientException.class);
-          var bex = (BearerWebClientException) ex;
+          assertThat(ex).isInstanceOf(BearerTokenException.class);
+          var bex = (BearerTokenException) ex;
           assertThat(bex.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
           assertThat(bex.getMessage()).contains("auth failed");
         })

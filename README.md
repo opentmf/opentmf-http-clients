@@ -552,7 +552,7 @@ The library **does not automatically retry** your HTTP calls. Retry handling is 
 
 > **Note:** The only internal retry is on **bearer token retrieval** — when the library fetches an OAuth2 token, it retries using the `num-retries` and `retry-wait-duration` from the client's configuration. This is transparent to the caller.
 
-Both `WebClientUtil` and `RestTemplateUtil` filter retries to the following HTTP status codes:
+Both `WebClientUtil` and `SyncClientUtil` filter retries to the following HTTP status codes:
 
 | Code | Meaning |
 |------|---------|
@@ -580,17 +580,17 @@ webClient.get()
 
 ### REST clients (RestClient and RestTemplate)
 
-Wrap the call with `RestTemplateUtil.executeWithRetry(...)`. This works identically with both `RestClient` and `RestTemplate`:
+Wrap the call with `SyncClientUtil.executeWithRetry(...)`. This works identically with both `RestClient` and `RestTemplate`:
 
 ```java
 // RestClient (recommended)
-String result = RestTemplateUtil.executeWithRetry(
+String result = SyncClientUtil.executeWithRetry(
     () -> restClient.get().uri("/catalog").retrieve().body(String.class),
     props.getNumRetries(),
     props.getRetryWaitDuration());
 
 // RestTemplate
-String result = RestTemplateUtil.executeWithRetry(
+String result = SyncClientUtil.executeWithRetry(
     () -> restTemplate.getForObject("/catalog", String.class),
     props.getNumRetries(),
     props.getRetryWaitDuration());
@@ -632,11 +632,11 @@ For GET-by-ID patterns where 404 means "not found, return empty":
 
 ```java
 // RestClient (recommended)
-Optional<Catalog> catalog = RestTemplateUtil.emptyOn404(
+Optional<Catalog> catalog = SyncClientUtil.emptyOn404(
     () -> restClient.get().uri("/catalog/123").retrieve().body(Catalog.class));
 
 // RestTemplate
-Optional<Catalog> catalog = RestTemplateUtil.emptyOn404(
+Optional<Catalog> catalog = SyncClientUtil.emptyOn404(
     () -> restTemplate.getForObject("/catalog/123", Catalog.class));
 
 // WebClient
@@ -649,7 +649,7 @@ Mono<Catalog> catalog = webClient.get().uri("/catalog/123")
 A generalized `emptyOn(HttpStatus...)` variant is available for other status codes (e.g. 410 Gone):
 
 ```java
-Optional<Catalog> catalog = RestTemplateUtil.emptyOn(
+Optional<Catalog> catalog = SyncClientUtil.emptyOn(
     () -> restClient.get().uri("/catalog/123").retrieve().body(Catalog.class),
     HttpStatus.NOT_FOUND, HttpStatus.GONE);
 ```
@@ -678,13 +678,13 @@ The target exception class must extend `OpenTmfClientResponseException` and prov
 
 #### Legacy manual error handling
 
-The `handleError(...)` methods on `WebClientUtil` and `RestTemplateUtil` remain available for use with non-library-created clients or for backward compatibility.
+The `handleError(...)` methods on `WebClientUtil` and `SyncClientUtil` remain available for use with non-library-created clients or for backward compatibility.
 
 ### Shared utilities
 
-`RestTemplateUtil` works with both `RestClient` and `RestTemplate` — all its methods (`executeWithRetry`, `emptyOn404`, `emptyOn`, `shouldRetryOn`, `handleError`) operate on the shared exception hierarchy (`RestClientResponseException`, `OpenTmfClientResponseException`) rather than on client-specific APIs.
+`SyncClientUtil` works with both `RestClient` and `RestTemplate` — all its methods (`executeWithRetry`, `emptyOn404`, `emptyOn`, `shouldRetryOn`, `handleError`) operate on the shared exception hierarchy (`RestClientResponseException`, `OpenTmfClientResponseException`) rather than on client-specific APIs.
 
-`HttpClientUtil` exposes the shared retryable-status logic (`isRetryableStatus`, `createException`, `remap`) used by both `WebClientUtil` and `RestTemplateUtil`.
+`HttpClientUtil` exposes the shared retryable-status logic (`isRetryableStatus`, `createException`, `remap`) used by both `WebClientUtil` and `SyncClientUtil`.
 
 ## Migration from v1.x
 
