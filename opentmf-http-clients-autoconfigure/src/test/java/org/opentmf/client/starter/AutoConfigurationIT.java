@@ -8,6 +8,9 @@ import static org.mockserver.model.HttpResponse.response;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockserver.integration.ClientAndServer;
 import org.mockserver.matchers.Times;
 import org.opentmf.client.common.exception.OpenTmfClientNotFoundException;
@@ -15,7 +18,10 @@ import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.client.reactive.service.api.TokenService;
 import org.opentmf.client.rest.service.api.SyncTokenService;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
@@ -24,6 +30,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.zalando.logbook.Logbook;
 import reactor.test.StepVerifier;
 
+@ExtendWith(OutputCaptureExtension.class)
 class AutoConfigurationIT {
 
   @Configuration(proxyBeanMethods = false)
@@ -34,6 +41,22 @@ class AutoConfigurationIT {
       return WebClient.builder();
     }
 
+    @Bean
+    Logbook logbook() {
+      return Logbook.create();
+    }
+  }
+
+  @Configuration(proxyBeanMethods = false)
+  static class WebClientBuilderOnlyConfig {
+    @Bean
+    WebClient.Builder webClientBuilder() {
+      return WebClient.builder();
+    }
+  }
+
+  @Configuration(proxyBeanMethods = false)
+  static class LogbookBeanConfig {
     @Bean
     Logbook logbook() {
       return Logbook.create();
@@ -309,5 +332,59 @@ class AutoConfigurationIT {
               .expectNext("test-bearer-token")
               .verifyComplete();
         });
+  }
+
+  // --- Logbook optional-dependency matrix test (3 client-types x 2 logging x 2 classpath = 12 cases) ---
+
+  @ParameterizedTest(name = "[{index}] client-type={0}, logging-enabled={1}, has-logbook={2}")
+  @CsvSource({
+      "netty,  true,  true",
+      "netty,  true,  false",
+      "netty,  false, true",
+      "netty,  false, false",
+      "jdk,    true,  true",
+      "jdk,    true,  false",
+      "jdk,    false, true",
+      "jdk,    false, false",
+      "apache, true,  true",
+      "apache, true,  false",
+      "apache, false, true",
+      "apache, false, false"
+  })
+  void logbookMatrix(String clientType, boolean loggingEnabled, boolean hasLogbook,
+      CapturedOutput output) {
+
+    var runner = new ApplicationContextRunner()
+        .withConfiguration(AutoConfigurations.of(OpentmfHttpClientsAutoConfiguration.class))
+        .withUserConfiguration(WebClientBuilderOnlyConfig.class)
+        .withPropertyValues(
+            "opentmf.client-type=" + clientType,
+            "opentmf.http-clients.svc.base-url=http://localhost:9999",
+            "opentmf.http-clients.svc.logging-enabled=" + loggingEnabled);
+
+    if (hasLogbook) {
+      runner = runner.withUserConfiguration(LogbookBeanConfig.class);
+    } else {
+      runner = runner.withClassLoader(new FilteredClassLoader("org.zalando.logbook"));
+    }
+
+    runner.run(context -> {
+      assertThat(context).hasNotFailed();
+
+      if ("netty".equals(clientType)) {
+        assertThat(context.containsBean("svcWebClient")).isTrue();
+        assertThat(context.containsBean("svcTokenService")).isTrue();
+      } else {
+        assertThat(context.containsBean("svcRestTemplate")).isTrue();
+        assertThat(context.containsBean("svcRestClient")).isTrue();
+        assertThat(context.containsBean("svcTokenService")).isTrue();
+      }
+    });
+
+    if (loggingEnabled && !hasLogbook) {
+      assertThat(output).contains("logging-enabled: true, but no Logbook bean found");
+    } else {
+      assertThat(output).doesNotContain("logging-enabled: true, but no Logbook bean found");
+    }
   }
 }
