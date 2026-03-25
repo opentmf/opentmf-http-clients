@@ -35,7 +35,7 @@
   <licenses>
     <license>
       <name>Apache License, Version 2.0</name>
-      <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
       <distribution>repo</distribution>
       <comments>A permissive open-source license</comments>
     </license>
@@ -77,9 +77,9 @@
 
     <spring-boot.version>4.0.4</spring-boot.version>
     <opentmf-commons.version>2.1.0</opentmf-commons.version>
+    <opentmf-mockserver.version>2.1.2</opentmf-mockserver.version>
     <logbook.version>4.0.2</logbook.version>
 
-    <netty-mockserver.version>5.15.0</netty-mockserver.version>
     <archunit-junit5.version>1.4.1</archunit-junit5.version>
 
     <maven-deploy-plugin.version>3.1.4</maven-deploy-plugin.version>
@@ -166,10 +166,10 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>org.mock-server</groupId>
-      <artifactId>mockserver-netty</artifactId>
+      <groupId>org.opentmf.mockserver</groupId>
+      <artifactId>opentmf-mockserver</artifactId>
       <scope>test</scope>
-      <version>${netty-mockserver.version}</version>
+      <version>${opentmf-mockserver.version}</version>
     </dependency>
   </dependencies>
 
@@ -295,24 +295,27 @@
           </execution>
           <execution>
             <configuration>
-              <haltOnFailure>false</haltOnFailure>
+              <haltOnFailure>true</haltOnFailure>
+              <excludes>
+                <exclude>**/*Application.*</exclude>
+              </excludes>
               <rules>
                 <rule>
                   <element>BUNDLE</element>
                   <limits>
                     <limit>
                       <counter>LINE</counter>
-                      <minimum>100%</minimum>
+                      <minimum>80%</minimum>
                       <value>COVEREDRATIO</value>
                     </limit>
                     <limit>
                       <counter>INSTRUCTION</counter>
-                      <minimum>100%</minimum>
+                      <minimum>80%</minimum>
                       <value>COVEREDRATIO</value>
                     </limit>
                     <limit>
                       <counter>BRANCH</counter>
-                      <minimum>100%</minimum>
+                      <minimum>80%</minimum>
                       <value>COVEREDRATIO</value>
                     </limit>
                     <limit>

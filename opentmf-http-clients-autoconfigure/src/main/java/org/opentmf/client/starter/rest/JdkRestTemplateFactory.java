@@ -5,7 +5,6 @@ import java.net.InetSocketAddress;
 import java.net.ProxySelector;
 import java.net.http.HttpClient;
 import java.security.KeyStore;
-import java.time.Duration;
 import java.util.Base64;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
@@ -13,21 +12,36 @@ import javax.net.ssl.TrustManagerFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.rest.service.api.RestTemplateFactory;
+import org.opentmf.client.rest.util.GzipClientHttpRequestInterceptor;
 import org.opentmf.client.rest.util.OpenTmfResponseErrorHandler;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.DefaultUriBuilderFactory;
+import org.zalando.logbook.Logbook;
+import org.zalando.logbook.spring.LogbookClientHttpRequestInterceptor;
 
 @Configuration(proxyBeanMethods = false)
 @Slf4j
 public class JdkRestTemplateFactory implements RestTemplateFactory {
+
+  private final ObjectProvider<Logbook> logbookProvider;
+
+  public JdkRestTemplateFactory(ObjectProvider<Logbook> logbookProvider) {
+    this.logbookProvider = logbookProvider;
+  }
 
   @Override
   public RestTemplate create(String clientId, ClientProperties properties) {
     log.debug("Creating JDK HttpClient RestTemplate for client: {}", clientId);
     try {
       var builder = HttpClient.newBuilder()
-          .connectTimeout(Duration.ofMillis(properties.getRequestTimeoutMillis()));
+          .connectTimeout(properties.getRequestTimeout())
+          .followRedirects(properties.isFollowRedirects()
+              ? HttpClient.Redirect.NORMAL : HttpClient.Redirect.NEVER);
 
       if (properties.getCertificates() != null) {
         builder.sslContext(buildSslContext(properties));
@@ -40,9 +54,20 @@ public class JdkRestTemplateFactory implements RestTemplateFactory {
       }
 
       var requestFactory = new JdkClientHttpRequestFactory(builder.build());
-      requestFactory.setReadTimeout(Duration.ofMillis(properties.getResponseTimeoutMillis()));
+      requestFactory.setReadTimeout(properties.getResponseTimeout());
       var restTemplate = new RestTemplate(requestFactory);
       restTemplate.setErrorHandler(new OpenTmfResponseErrorHandler());
+
+      if (properties.isCompressionEnabled()) {
+        restTemplate.getInterceptors().add(GzipClientHttpRequestInterceptor.instance());
+      }
+      addFixedHeadersInterceptor(restTemplate, properties);
+      addLogbookInterceptor(restTemplate, properties);
+
+      if (StringUtils.hasText(properties.getBaseUrl())) {
+        restTemplate.setUriTemplateHandler(
+            new DefaultUriBuilderFactory(properties.getBaseUrl()));
+      }
       return restTemplate;
     } catch (Exception e) {
       throw new IllegalArgumentException("Failed to create JDK RestTemplate for " + clientId, e);
@@ -72,8 +97,29 @@ public class JdkRestTemplateFactory implements RestTemplateFactory {
       tmf.init(trustStore);
     }
 
-    var sslContext = SSLContext.getInstance("TLS");
+    var sslContext = SSLContext.getInstance(properties.getSslProtocol());
     sslContext.init(kmf.getKeyManagers(), tmf != null ? tmf.getTrustManagers() : null, null);
     return sslContext;
+  }
+
+  private void addFixedHeadersInterceptor(RestTemplate restTemplate, ClientProperties properties) {
+    if (!CollectionUtils.isEmpty(properties.getFixedHeaders())) {
+      restTemplate.getInterceptors().add((request, body, execution) -> {
+        properties.getFixedHeaders().forEach((k, v) -> request.getHeaders().set(k, v));
+        return execution.execute(request, body);
+      });
+    }
+  }
+
+  private void addLogbookInterceptor(RestTemplate restTemplate, ClientProperties properties) {
+    if (properties.isLoggingEnabled()) {
+      var logbook = logbookProvider.getIfAvailable();
+      if (logbook != null) {
+        restTemplate.getInterceptors().add(new LogbookClientHttpRequestInterceptor(logbook));
+      } else {
+        log.warn("Client has logging-enabled: true, but no Logbook bean found. "
+            + "Add org.zalando:logbook-spring to your classpath to enable HTTP logging.");
+      }
+    }
   }
 }

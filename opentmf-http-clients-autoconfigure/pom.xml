@@ -63,6 +63,14 @@
       <optional>true</optional>
     </dependency>
 
+    <!-- Logbook for REST clients: optional -->
+    <dependency>
+      <groupId>org.zalando</groupId>
+      <artifactId>logbook-spring</artifactId>
+      <version>${logbook.version}</version>
+      <optional>true</optional>
+    </dependency>
+
     <!-- REST HTTP client implementations: optional -->
     <dependency>
       <groupId>org.apache.httpcomponents.client5</groupId>

@@ -3,9 +3,7 @@ package org.opentmf.client.bearer.reactive;
 import static org.opentmf.client.bearer.util.BearerTokenUtil.SCOPE;
 import static org.springframework.util.StringUtils.hasText;
 
-import tools.jackson.databind.node.ObjectNode;
 import java.net.URI;
-import java.time.Duration;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.opentmf.client.bearer.exception.BearerWebClientException;
@@ -19,6 +17,7 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import tools.jackson.databind.node.ObjectNode;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -57,6 +56,6 @@ public class BearerTokenClientImpl implements BearerTokenClient {
         .map(body -> (ObjectNode) JacksonUtil.jsonToTree(body))
         .retryWhen(
             WebClientUtil.retry(properties.getNumRetries(),
-                Duration.ofMillis(properties.getRetryWaitMillis())));
+                properties.getRetryWaitDuration()));
   }
 }

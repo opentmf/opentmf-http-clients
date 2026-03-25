@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import lombok.Getter;
@@ -17,20 +18,36 @@ import org.springframework.validation.annotation.Validated;
 @Setter
 public class ClientProperties {
 
-  @Positive
-  private int maxConnections = 500;
+  private String baseUrl;
 
   @Positive
-  private int requestTimeoutMillis = 30000;
+  private int maxConnections = 200;
 
-  @Positive
-  private long responseTimeoutMillis = 45000;
+  /**
+   * Maximum number of connections per route (host). Currently only honoured by
+   * Apache HttpClient 5 ({@code client-type: apache}); ignored by JDK HttpClient
+   * and Reactor Netty. When {@code null}, defaults to {@link #maxConnections}.
+   */
+  private Integer maxConnectionsPerRoute;
+
+  private Duration requestTimeout = Duration.ofSeconds(30);
+
+  private Duration responseTimeout = Duration.ofSeconds(45);
+
+  private Duration connectionIdleTimeout = Duration.ofMinutes(4);
 
   @PositiveOrZero
   private int numRetries = 3;
 
-  @Positive
-  private long retryWaitMillis = 5000;
+  private Duration retryWaitDuration = Duration.ofSeconds(5);
+
+  private boolean followRedirects = true;
+
+  private String sslProtocol = "TLS";
+
+  private boolean loggingEnabled = true;
+
+  private boolean compressionEnabled = true;
 
   private Map<String, String> fixedHeaders;
 
@@ -49,6 +66,7 @@ public class ClientProperties {
   private ClientType clientType;
 
   @AssertTrue(message = "Cannot specify both basic-auth and bearer-auth")
+  @SuppressWarnings("unused") // invoked reflectively by Bean Validation
   private boolean isAuthMutuallyExclusive() {
     return basicAuth == null || bearerAuth == null;
   }
@@ -57,6 +75,13 @@ public class ClientProperties {
     if (basicAuth != null) return AuthType.BASIC;
     if (bearerAuth != null) return AuthType.BEARER;
     return AuthType.NONE;
+  }
+
+  /**
+   * Returns {@link #maxConnectionsPerRoute} if set, otherwise falls back to {@link #maxConnections}.
+   */
+  public int getEffectiveMaxConnectionsPerRoute() {
+    return maxConnectionsPerRoute != null ? maxConnectionsPerRoute : maxConnections;
   }
 
 

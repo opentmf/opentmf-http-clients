@@ -36,8 +36,8 @@ opentmf:
 
     healthCheck:
       client-type: netty
-      request-timeout-millis: 5000
-      response-timeout-millis: 10000
+      request-timeout: 5s
+      response-timeout: 10s
 
     syncBasic:
       client-type: jdk

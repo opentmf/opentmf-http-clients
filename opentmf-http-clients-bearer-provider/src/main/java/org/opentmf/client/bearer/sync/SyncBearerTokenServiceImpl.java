@@ -7,7 +7,6 @@ import static org.opentmf.client.common.util.TokenUtil.TOKEN_TYPE_BEARER;
 import static org.opentmf.client.common.util.TokenUtil.cacheKey;
 import static org.springframework.util.StringUtils.hasText;
 
-import tools.jackson.databind.node.ObjectNode;
 import com.github.benmanes.caffeine.cache.Cache;
 import java.util.HashMap;
 import java.util.Map;
@@ -17,6 +16,7 @@ import org.opentmf.client.bearer.model.TokenEntry;
 import org.opentmf.client.common.model.BearerAuthConfig;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import tools.jackson.databind.node.ObjectNode;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -66,7 +66,7 @@ public class SyncBearerTokenServiceImpl implements SyncBearerTokenService {
   }
 
   private String extractToken(ObjectNode objectNode) {
-    return objectNode.get(config.getTokenField()).textValue();
+    return objectNode.get(config.getTokenField()).stringValue();
   }
 
   private MultiValueMap<String, String> enrich(String username, String scope,

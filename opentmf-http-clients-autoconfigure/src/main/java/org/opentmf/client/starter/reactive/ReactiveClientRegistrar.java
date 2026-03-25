@@ -3,19 +3,17 @@ package org.opentmf.client.starter.reactive;
 import static org.opentmf.client.common.util.TokenUtil.TOKEN_SERVICE;
 import static org.opentmf.client.common.util.TokenUtil.WEB_CLIENT;
 
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
-import com.github.benmanes.caffeine.cache.Expiry;
 import lombok.extern.slf4j.Slf4j;
-import org.opentmf.client.bearer.model.TokenEntry;
 import org.opentmf.client.bearer.reactive.BearerTokenClientImpl;
 import org.opentmf.client.bearer.reactive.BearerTokenServiceImpl;
 import org.opentmf.client.bearer.reactive.BearerTokenServiceMockImpl;
+import org.opentmf.client.bearer.util.TokenCacheUtil;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.reactive.service.api.TokenService;
 import org.opentmf.client.reactive.service.impl.BasicTokenServiceImpl;
 import org.opentmf.client.reactive.service.impl.NoOpTokenService;
 import org.opentmf.client.reactive.util.WebClientConfigUtil;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -35,13 +33,17 @@ public class ReactiveClientRegistrar {
 
   @Autowired
   public ReactiveClientRegistrar(ConfigurableApplicationContext ctx,
-      WebClient.Builder webClientBuilder, Logbook logbook) {
+      WebClient.Builder webClientBuilder, ObjectProvider<Logbook> logbookProvider) {
     this.factory = ctx.getBeanFactory();
     this.webClientBuilder = webClientBuilder;
-    this.logbook = logbook;
+    this.logbook = logbookProvider.getIfAvailable();
   }
 
   public void registerBeans(String clientId, ClientProperties properties) {
+    if (properties.isLoggingEnabled() && logbook == null) {
+      log.warn("Client '{}' has logging-enabled: true, but no Logbook bean found. "
+          + "Add org.zalando:logbook-netty to your classpath to enable HTTP logging.", clientId);
+    }
     registerIfAbsent(clientId + WEB_CLIENT, buildWebClient(clientId, properties));
     registerIfAbsent(clientId + TOKEN_SERVICE, buildTokenService(clientId, properties));
   }
@@ -70,31 +72,8 @@ public class ReactiveClientRegistrar {
     }
     var tokenWebClient = buildWebClient(clientId + "Token", properties);
     var tokenClient = new BearerTokenClientImpl(properties, bearerConfig, tokenWebClient);
-    var cache = buildTokenCache();
+    var cache = TokenCacheUtil.buildTokenCache();
     return new BearerTokenServiceImpl(bearerConfig, cache, tokenClient);
-  }
-
-  private Cache<String, TokenEntry> buildTokenCache() {
-    return Caffeine.newBuilder()
-        .expireAfter(new Expiry<String, TokenEntry>() {
-          @Override
-          public long expireAfterCreate(String key, TokenEntry entry, long currentTime) {
-            return entry.getCacheDuration().toNanos();
-          }
-
-          @Override
-          public long expireAfterUpdate(String key, TokenEntry entry,
-              long currentTime, long currentDuration) {
-            return entry.getCacheDuration().toNanos();
-          }
-
-          @Override
-          public long expireAfterRead(String key, TokenEntry entry,
-              long currentTime, long currentDuration) {
-            return currentDuration;
-          }
-        })
-        .build();
   }
 
   private void registerIfAbsent(String beanName, Object bean) {

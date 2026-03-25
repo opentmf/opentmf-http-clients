@@ -2,7 +2,7 @@
 
 General-purpose HTTP client libraries for Spring Boot with Logbook integration, configurable connection properties, fixed headers, and token retrieval with implicit access token caching.
 
-Supports both **reactive** (`WebClient`) and **synchronous** (`RestTemplate`) clients with pluggable HTTP implementations, unified under a single configuration model.
+Supports both **reactive** (`WebClient`) and **synchronous** (`RestClient` / `RestTemplate`) clients with pluggable HTTP implementations, unified under a single configuration model.
 
 **Authentication types:**
 
@@ -17,7 +17,7 @@ Supports both **reactive** (`WebClient`) and **synchronous** (`RestTemplate`) cl
 | Module | Description |
 |---|---|
 | `opentmf-http-clients-common` | Shared models, exceptions, and utilities (reactor-free, RestTemplate-free) |
-| `opentmf-http-clients-rest` | Synchronous (RestTemplate) interfaces and utilities |
+| `opentmf-http-clients-rest` | Synchronous (RestClient / RestTemplate) interfaces and utilities |
 | `opentmf-http-clients-reactive` | Reactive (WebClient / Reactor Netty) interfaces and utilities |
 | `opentmf-http-clients-bearer-provider` | Bearer token retrieval with Caffeine caching (reactive and sync) |
 | `opentmf-http-clients-autoconfigure` | Spring Boot auto-configuration (config properties, bean registrars) |
@@ -50,7 +50,7 @@ This will manage the dependencies of the opentmf-commons libraries to use their 
 
 Pick one of the three starters depending on your needs:
 
-**REST-only** (RestTemplate / JDK or Apache HttpClient):
+**REST-only** (RestClient + RestTemplate / JDK or Apache HttpClient):
 
 ```xml
 <dependency>
@@ -80,17 +80,16 @@ Pick one of the three starters depending on your needs:
 </dependency>
 ```
 
-For **REST** clients, add one HTTP client implementation:
+For **REST** clients, the default transport is JDK HttpClient (Java 11+) — no extra dependency needed. If you prefer Apache HttpClient 5 (e.g. for advanced connection pool tuning), add it explicitly:
 
 ```xml
-<!-- Option A: Apache HttpClient 5 (recommended) -->
 <dependency>
   <groupId>org.apache.httpcomponents.client5</groupId>
   <artifactId>httpclient5</artifactId>
 </dependency>
-
-<!-- Option B: JDK HttpClient — no extra dependency needed (Java 11+) -->
 ```
+
+> The **umbrella starter** (`opentmf-http-clients-starter`) already bundles `httpclient5`. This is only needed when using `opentmf-http-clients-starter-rest` directly.
 
 ## Configuration
 
@@ -110,6 +109,52 @@ Each client can override this via a per-client `client-type` property. The three
 | `jdk` (default) | `RestTemplate` | JDK HttpClient | `rest`, `servlet` |
 | `apache` | `RestTemplate` | Apache HttpClient 5 | — |
 | `netty` | `WebClient` | Reactor Netty | `reactive` |
+
+### Per-client properties
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `client-type` | string | *(global)* | Override the global default for this client |
+| `base-url` | string | *(none)* | Base URL prepended to all relative request URIs |
+| `max-connections` | int | `200` | Maximum number of connections in the pool |
+| `max-connections-per-route` | int | *(max-connections)* | Per-route connection limit (Apache HttpClient only, ignored by others) |
+| `request-timeout` | Duration | `30s` | Connect timeout |
+| `response-timeout` | Duration | `45s` | Read / response timeout |
+| `connection-idle-timeout` | Duration | `4m` | How long idle connections stay in the pool before eviction |
+| `num-retries` | int | `3` | Maximum retry count (used by `executeWithRetry` / `WebClientUtil.retry`) |
+| `retry-wait-duration` | Duration | `5s` | Base wait between retries (exponential backoff) |
+| `follow-redirects` | boolean | `true` | Automatically follow HTTP 3xx redirects |
+| `ssl-protocol` | string | `TLS` | SSL/TLS protocol version (`TLS`, `TLSv1.2`, `TLSv1.3`) |
+| `logging-enabled` | boolean | `true` | Enable Logbook request/response logging for this client |
+| `compression-enabled` | boolean | `true` | Enable HTTP response compression (gzip) |
+| `fixed-headers` | map | *(none)* | Headers added to every request |
+| `proxy-config` | object | *(none)* | Forward proxy settings (`proxy-host`, `proxy-port`, `non-proxy-hosts`) |
+| `certificates` | object | *(none)* | mTLS key-store and trust-store |
+| `basic-auth` | object | *(none)* | Basic authentication credentials |
+| `bearer-auth` | object | *(none)* | OAuth2 bearer token configuration |
+| `paths` | map | *(none)* | Named path/scope entries |
+
+Duration values accept Spring Boot duration strings: `500ms`, `3s`, `1m`, `PT30S`.
+
+> **`max-connections` behaviour per client type:**
+> - **Netty** (`client-type: netty`): fully honoured. For high-throughput reactive workloads, consider increasing to 500+.
+> - **Apache** (`client-type: apache`): fully honoured. Apache HttpClient's own default is 25; for synchronous clients, lower values (25-100) are often more appropriate to avoid excessive blocking threads.
+> - **JDK** (`client-type: jdk`): ignored. The JDK HttpClient manages connection pooling internally and does not expose a pool-size setting.
+
+> **`compression-enabled` behaviour per client type:**
+> - **Netty** (`client-type: netty`): sets Reactor Netty's `.compress(true/false)`. When enabled, the client sends `Accept-Encoding: gzip, deflate` and decompresses responses transparently.
+> - **Apache** (`client-type: apache`): Apache HttpClient 5 enables gzip/deflate decompression by default. When `compression-enabled: false`, the library calls `disableContentCompression()`.
+> - **JDK** (`client-type: jdk`): the library adds an interceptor that sets `Accept-Encoding: gzip` on outgoing requests and transparently decompresses gzipped responses. When `compression-enabled: false`, the interceptor is not installed.
+
+> **Logbook HTTP logging:**
+> When `logging-enabled: true` (the default), the library wires [Zalando Logbook](https://github.com/zalando/logbook) to log HTTP requests and responses. The Logbook dependency is **optional** at the library layer — if you want logging, you must provide the appropriate Logbook artifact on your classpath:
+>
+> | Client type | Required Logbook dependency |
+> |---|---|
+> | `jdk`, `apache` (REST) | `org.zalando:logbook-spring` |
+> | `netty` (reactive) | `org.zalando:logbook-netty` |
+>
+> The **REST starter** (`opentmf-http-clients-starter-rest`) already includes `logbook-spring`. The **reactive starter** (`opentmf-http-clients-starter-reactive`) already includes `logbook-netty`. The **umbrella starter** includes both. If no Logbook artifact is present on the classpath, `logging-enabled` is silently ignored and no logging interceptor is installed.
 
 ### Bearer Auth Client (Minimal)
 
@@ -133,11 +178,17 @@ opentmf:
   http-clients:
     myBearerClient:
       client-type: netty
+      base-url: https://api.example.com
       max-connections: 100
-      request-timeout-millis: 50000
-      response-timeout-millis: 50000
+      request-timeout: 50s
+      response-timeout: 50s
+      connection-idle-timeout: 4m
       num-retries: 3
-      retry-wait-millis: 5000
+      retry-wait-duration: 5s
+      follow-redirects: true
+      ssl-protocol: TLS
+      logging-enabled: true
+      compression-enabled: true
       fixed-headers:
         Accept: application/json
         AnotherHeader: AnotherValue
@@ -196,10 +247,10 @@ opentmf:
   http-clients:
     myBasicClient:
       max-connections: 100
-      request-timeout-millis: 50000
-      response-timeout-millis: 50000
+      request-timeout: 50s
+      response-timeout: 50s
       num-retries: 3
-      retry-wait-millis: 5000
+      retry-wait-duration: 5s
       fixed-headers:
         Accept: application/json
       proxy-config:
@@ -227,8 +278,8 @@ opentmf:
 opentmf:
   http-clients:
     healthCheck:
-      request-timeout-millis: 5000
-      response-timeout-millis: 10000
+      request-timeout: 5s
+      response-timeout: 10s
 ```
 
 ### REST Client with Bearer Auth
@@ -291,10 +342,13 @@ For each entry in the `http-clients` map with key `clientId`, the registered bea
 | Bean Name | Type |
 |---|---|
 | `{clientId}ClientProperties` | `ClientProperties` |
-| `{clientId}RestTemplate` | `RestTemplate` |
+| `{clientId}RestClient` | `RestClient` (recommended) |
+| `{clientId}RestTemplate` | `RestTemplate` (deprecated in Spring Framework 7) |
 | `{clientId}TokenService` | `SyncTokenService` |
 
-A single client produces **either** reactive beans **or** REST beans, never both. If you need both a `WebClient` and a `RestTemplate` for the same backend, declare two clients with different IDs (e.g. one with `client-type: netty` and one with `client-type: jdk`).
+Both a `RestClient` and a `RestTemplate` bean are registered for each REST client. The `RestClient` is the recommended choice for new code — it provides a modern fluent API, works naturally with virtual threads (Java 21+), and is the official replacement for `RestTemplate` in Spring Framework 7+.
+
+A single client produces **either** reactive beans **or** REST beans, never both. If you need both a `WebClient` and a `RestClient` for the same backend, declare two clients with different IDs (e.g. one with `client-type: netty` and one with `client-type: jdk`).
 
 ### Autowiring beans
 
@@ -308,7 +362,8 @@ public class MyCatalogService {
   private final WebClient reactiveApiWebClient;
   private final TokenService reactiveApiTokenService;
 
-  private final RestTemplate syncApiRestTemplate;
+  private final RestClient syncApiRestClient;     // recommended
+  private final RestTemplate syncApiRestTemplate;  // deprecated
   private final SyncTokenService syncApiTokenService;
   // ...
 }
@@ -352,6 +407,106 @@ public class CatalogService {
 > only if you encounter a `NoSuchBeanDefinitionException` at startup for a bean you
 > know is configured.
 
+### Customizing clients
+
+The library creates fully configured clients from your YAML properties. You can further customize them after injection, or replace them entirely.
+
+#### WebClient (Reactor Netty)
+
+`WebClient` is immutable — call `mutate()` to derive a customized copy that shares the same underlying connection pool:
+
+```java
+@Service
+@DependsOn("opentmfHttpClientsStarter")
+public class CatalogService {
+
+  private final WebClient webClient;
+
+  public CatalogService(WebClient reactiveApiWebClient) {
+    this.webClient = reactiveApiWebClient.mutate()
+        .defaultHeader("X-Tenant", "acme")
+        .filter(myLoggingFilter())
+        .build();
+  }
+}
+```
+
+#### RestClient (JDK or Apache)
+
+`RestClient` is immutable — call `mutate()` to derive a customized copy:
+
+```java
+@Service
+@DependsOn("opentmfHttpClientsStarter")
+public class CatalogService {
+
+  private final RestClient restClient;
+
+  public CatalogService(RestClient syncApiRestClient) {
+    this.restClient = syncApiRestClient.mutate()
+        .defaultHeader("X-Tenant", "acme")
+        .requestInterceptor((request, body, execution) -> {
+          request.getHeaders().set("X-Correlation-Id", UUID.randomUUID().toString());
+          return execution.execute(request, body);
+        })
+        .build();
+  }
+}
+```
+
+#### RestTemplate (JDK or Apache) — deprecated
+
+`RestTemplate` is mutable — add interceptors or message converters directly:
+
+```java
+@Service
+@DependsOn("opentmfHttpClientsStarter")
+public class CatalogService {
+
+  private final RestTemplate restTemplate;
+
+  public CatalogService(RestTemplate syncApiRestTemplate) {
+    this.restTemplate = syncApiRestTemplate;
+    this.restTemplate.getInterceptors().add((request, body, execution) -> {
+      request.getHeaders().set("X-Tenant", "acme");
+      return execution.execute(request, body);
+    });
+  }
+}
+```
+
+#### Replacing a client entirely
+
+If the YAML-driven configuration is not sufficient (e.g. you need a custom SSL hostname verifier, NTLM authentication, or a keep-alive strategy), define your own bean with the **exact same name** the library would register. The library uses `registerIfAbsent`, so it will skip any bean that already exists.
+
+Example — disabling SSL hostname verification for a staging environment with internal CA certificates:
+
+```java
+@Configuration
+@Profile("staging")
+public class CustomClientConfig {
+
+  @Bean
+  public RestTemplate syncApiRestTemplate() {
+    var tlsStrategy = ClientTlsStrategyBuilder.create()
+        .setSslContext(SSLContexts.createDefault())
+        .build();
+    var connManager = PoolingHttpClientConnectionManagerBuilder.create()
+        .setTlsSocketStrategy(tlsStrategy)
+        .build();
+    var httpClient = HttpClients.custom()
+        .setConnectionManager(connManager)
+        .build();
+    var restTemplate = new RestTemplate(
+        new HttpComponentsClientHttpRequestFactory(httpClient));
+    restTemplate.setErrorHandler(new OpenTmfResponseErrorHandler());
+    return restTemplate;
+  }
+}
+```
+
+The same approach works for `WebClient` (`{clientId}WebClient`) and `RestClient` (`{clientId}RestClient`) — define a bean with the exact name and the library will leave it untouched.
+
 ## Dynamic Token Caching
 
 Bearer tokens are cached using [Caffeine](https://github.com/ben-manes/caffeine) with a per-token TTL derived from the `expires_in` field in the OAuth2 token response. This replaces the static `cache-expiry-seconds` from v1.x.
@@ -394,7 +549,7 @@ For detailed instructions on generating keystores and truststores, see [Mutual T
 
 The library **does not automatically retry** your HTTP calls. Retry handling is intentionally opt-in and controlled at call sites — you decide which operations are safe to retry. Use retries only for idempotent operations, and be extra careful with `POST` unless the target endpoint is idempotent.
 
-> **Note:** The only internal retry is on **bearer token retrieval** — when the library fetches an OAuth2 token, it retries using the `num-retries` and `retry-wait-millis` from the client's configuration. This is transparent to the caller.
+> **Note:** The only internal retry is on **bearer token retrieval** — when the library fetches an OAuth2 token, it retries using the `num-retries` and `retry-wait-duration` from the client's configuration. This is transparent to the caller.
 
 Both `WebClientUtil` and `RestTemplateUtil` filter retries to the following HTTP status codes:
 
@@ -419,29 +574,36 @@ webClient.get()
     .bodyToMono(String.class)
     .retryWhen(WebClientUtil.retry(
         props.getNumRetries(),
-        Duration.ofMillis(props.getRetryWaitMillis())));
+        props.getRetryWaitDuration()));
 ```
 
-### REST clients
+### REST clients (RestClient and RestTemplate)
 
-Wrap the call with `RestTemplateUtil.executeWithRetry(...)`:
+Wrap the call with `RestTemplateUtil.executeWithRetry(...)`. This works identically with both `RestClient` and `RestTemplate`:
 
 ```java
+// RestClient (recommended)
+String result = RestTemplateUtil.executeWithRetry(
+    () -> restClient.get().uri("/catalog").retrieve().body(String.class),
+    props.getNumRetries(),
+    props.getRetryWaitDuration());
+
+// RestTemplate
 String result = RestTemplateUtil.executeWithRetry(
     () -> restTemplate.getForObject("/catalog", String.class),
     props.getNumRetries(),
-    Duration.ofMillis(props.getRetryWaitMillis()));
+    props.getRetryWaitDuration());
 ```
 
 Both methods use exponential backoff and accept an optional jitter factor.
 
 ### Error handling
 
-All library-created clients (both `WebClient` and `RestTemplate`) automatically convert HTTP error responses into `OpenTmfClientResponseException`. For 404 responses, the more specific `OpenTmfClientNotFoundException` is thrown. Both exception types carry the HTTP status code, a human-readable message, and the raw response body:
+All library-created clients (`WebClient`, `RestClient`, and `RestTemplate`) automatically convert HTTP error responses into `OpenTmfClientResponseException`. For 404 responses, the more specific `OpenTmfClientNotFoundException` is thrown. Both exception types carry the HTTP status code, a human-readable message, and the raw response body:
 
 ```java
 try {
-    restTemplate.getForObject("/catalog/123", String.class);
+    restClient.get().uri("/catalog/123").retrieve().body(String.class);
 } catch (OpenTmfClientNotFoundException e) {
     // 404 — resource not found
     log.info("Not found: {}", e.getMessage());
@@ -468,6 +630,10 @@ The error message is intelligently extracted from the response body — the libr
 For GET-by-ID patterns where 404 means "not found, return empty":
 
 ```java
+// RestClient (recommended)
+Optional<Catalog> catalog = RestTemplateUtil.emptyOn404(
+    () -> restClient.get().uri("/catalog/123").retrieve().body(Catalog.class));
+
 // RestTemplate
 Optional<Catalog> catalog = RestTemplateUtil.emptyOn404(
     () -> restTemplate.getForObject("/catalog/123", Catalog.class));
@@ -483,7 +649,7 @@ A generalized `emptyOn(HttpStatus...)` variant is available for other status cod
 
 ```java
 Optional<Catalog> catalog = RestTemplateUtil.emptyOn(
-    () -> restTemplate.getForObject("/catalog/123", Catalog.class),
+    () -> restClient.get().uri("/catalog/123").retrieve().body(Catalog.class),
     HttpStatus.NOT_FOUND, HttpStatus.GONE);
 ```
 
@@ -515,6 +681,8 @@ The `handleError(...)` methods on `WebClientUtil` and `RestTemplateUtil` remain 
 
 ### Shared utilities
 
+`RestTemplateUtil` works with both `RestClient` and `RestTemplate` — all its methods (`executeWithRetry`, `emptyOn404`, `emptyOn`, `shouldRetryOn`, `handleError`) operate on the shared exception hierarchy (`RestClientResponseException`, `OpenTmfClientResponseException`) rather than on client-specific APIs.
+
 `HttpClientUtil` exposes the shared retryable-status logic (`isRetryableStatus`, `createException`, `remap`) used by both `WebClientUtil` and `RestTemplateUtil`.
 
 ## Migration from v1.x
@@ -536,12 +704,21 @@ This project replaces `opentmf-web-clients` (v1.x). The key changes are:
 </dependency>
 ```
 
-**After** (v2.x — single starter):
+**After** (v2.x — pick the starter that fits your stack):
 
 ```xml
+<!-- Umbrella (REST + reactive) -->
 <dependency>
   <groupId>org.opentmf.client</groupId>
   <artifactId>opentmf-http-clients-starter</artifactId>
+  <type>pom</type>
+</dependency>
+
+<!-- Or REST-only / reactive-only -->
+<dependency>
+  <groupId>org.opentmf.client</groupId>
+  <artifactId>opentmf-http-clients-starter-rest</artifactId>
+  <type>pom</type>
 </dependency>
 ```
 
@@ -623,8 +800,8 @@ import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 
 | v1.x pattern | v2.x pattern |
 |---|---|
-| `OPENTMF_WEBCLIENT_BASIC_<ID>_*` | `OPENTMF_CLIENTS_<ID>_*` |
-| `OPENTMF_WEBCLIENT_OPENID_<ID>_*` | `OPENTMF_CLIENTS_<ID>_*` |
+| `OPENTMF_WEBCLIENT_BASIC_<ID>_*` | `OPENTMF_HTTP_CLIENTS_<ID>_*` |
+| `OPENTMF_WEBCLIENT_OPENID_<ID>_*` | `OPENTMF_HTTP_CLIENTS_<ID>_*` |
 | `*_CONNECTION_PROVIDER_NAME` | *(removed)* |
 | `*_TOKEN_CONFIG_USERNAME` | `*_BASIC_AUTH_USERNAME` |
 | `*_TOKEN_CONFIG_PASSWORD` | `*_BASIC_AUTH_PASSWORD` |

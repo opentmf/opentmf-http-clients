@@ -1,6 +1,5 @@
 package org.opentmf.client.reactive.util;
 
-import org.opentmf.client.common.model.ClientProperties;
 import io.netty.channel.ChannelOption;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.ssl.SslContext;
@@ -11,7 +10,6 @@ import io.netty.handler.timeout.WriteTimeoutHandler;
 import java.io.ByteArrayInputStream;
 import java.net.InetSocketAddress;
 import java.security.KeyStore;
-import java.time.Duration;
 import java.util.Base64;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -21,6 +19,7 @@ import javax.net.ssl.TrustManagerFactory;
 import lombok.Generated;
 import org.opentmf.client.common.exception.OpenTmfClientNotFoundException;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
+import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.util.ErrorBodyExtractor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -31,9 +30,9 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
 import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Mono;
 import org.zalando.logbook.Logbook;
 import org.zalando.logbook.netty.LogbookClientHandler;
+import reactor.core.publisher.Mono;
 import reactor.netty.Connection;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.resources.ConnectionProvider;
@@ -46,7 +45,6 @@ public final class WebClientConfigUtil {
   private WebClientConfigUtil() {
   }
 
-  private static final int MAX_IDLE_TIME_MINUTES = 4;
   private static final int MAX_IN_MEMORY = 16 * 1024 * 1024;
 
   public static HttpClient httpClient(
@@ -68,22 +66,27 @@ public final class WebClientConfigUtil {
       String clientId,
       ClientProperties clientProperties) {
     var connectionProvider = buildConnectionProvider(clientId, clientProperties);
-    return HttpClient.create(connectionProvider)
+    var client = HttpClient.create(connectionProvider)
         .wiretap(HttpClient.class.getName(), LogLevel.INFO, AdvancedByteBufFormat.SIMPLE)
-        .compress(true)
-        .responseTimeout(Duration.ofMillis(clientProperties.getResponseTimeoutMillis()))
+        .compress(clientProperties.isCompressionEnabled())
+        .responseTimeout(clientProperties.getResponseTimeout())
         .keepAlive(true)
         .secure(spec ->
-            spec.sslContext(sslContext).handshakeTimeout(
-                Duration.ofMillis(clientProperties.getResponseTimeoutMillis())))
-        .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, clientProperties.getRequestTimeoutMillis())
+            spec.sslContext(sslContext).handshakeTimeout(clientProperties.getResponseTimeout()))
+        .option(ChannelOption.CONNECT_TIMEOUT_MILLIS,
+            (int) clientProperties.getRequestTimeout().toMillis())
         .option(ChannelOption.SO_KEEPALIVE, true)
         .doOnConnected(connection -> doOnConnected(connection, logbook, clientProperties));
+
+    if (clientProperties.isFollowRedirects()) {
+      client = client.followRedirect(true);
+    }
+    return client;
   }
 
   public static WebClient createWebClient(WebClient.Builder webClientBuilder, HttpClient httpClient,
       ClientProperties clientProperties) {
-    return webClientBuilder.defaultHeaders((HttpHeaders httpHeaders) -> {
+    var builder = webClientBuilder.defaultHeaders((HttpHeaders httpHeaders) -> {
           httpHeaders.add(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE);
           if (!CollectionUtils.isEmpty(clientProperties.getFixedHeaders())) {
             clientProperties.getFixedHeaders().forEach(httpHeaders::add);
@@ -91,8 +94,12 @@ public final class WebClientConfigUtil {
         })
         .clientConnector(new ReactorClientHttpConnector(httpClient))
         .filter(errorWrappingFilter())
-        .exchangeStrategies(buildExchangeStrategies())
-        .build();
+        .exchangeStrategies(buildExchangeStrategies());
+
+    if (StringUtils.hasText(clientProperties.getBaseUrl())) {
+      builder.baseUrl(clientProperties.getBaseUrl());
+    }
+    return builder.build();
   }
 
   /**
@@ -129,7 +136,7 @@ public final class WebClientConfigUtil {
     if (clientProperties.getCertificates() != null) {
       return buildMtlsSslContext(clientProperties);
     }
-    return buildGenericSslContext();
+    return buildGenericSslContext(clientProperties);
   }
 
   private static SslContext buildMtlsSslContext(ClientProperties clientProperties) {
@@ -145,57 +152,82 @@ public final class WebClientConfigUtil {
       keyManagerFactory.init(keyStore,
           clientProperties.getCertificates().getKeyStore().getPkPassword().toCharArray());
 
-      if (clientProperties.getCertificates().getTrustStore() == null) {
-        return SslContextBuilder.forClient().keyManager(keyManagerFactory).build();
-      }
+      var sslBuilder = SslContextBuilder.forClient()
+          .keyManager(keyManagerFactory);
+      applySslProtocol(sslBuilder, clientProperties);
 
-      var trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
-      var trustCert = Base64.getDecoder().decode(
-          clientProperties.getCertificates().getTrustStore().getBase64Jks());
-      var trustStorePassword = clientProperties.getCertificates().getTrustStore().getPassword();
-      var trustManagerFactory = TrustManagerFactory.getInstance("SunX509");
-      trustStore.load(
-          new java.io.ByteArrayInputStream(trustCert),
-          trustStorePassword == null ? null : trustStorePassword.toCharArray());
-      trustManagerFactory.init(trustStore);
-      return SslContextBuilder.forClient().keyManager(keyManagerFactory)
-          .trustManager(trustManagerFactory).build();
+      if (clientProperties.getCertificates().getTrustStore() != null) {
+        var trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
+        var trustCert = Base64.getDecoder().decode(
+            clientProperties.getCertificates().getTrustStore().getBase64Jks());
+        var trustStorePassword = clientProperties.getCertificates().getTrustStore().getPassword();
+        var trustManagerFactory = TrustManagerFactory.getInstance("SunX509");
+        trustStore.load(
+            new java.io.ByteArrayInputStream(trustCert),
+            trustStorePassword == null ? null : trustStorePassword.toCharArray());
+        trustManagerFactory.init(trustStore);
+        sslBuilder.trustManager(trustManagerFactory);
+      }
+      return sslBuilder.build();
     } catch (Exception e) {
       throw new IllegalArgumentException(
           "Error creating 2-Way TLS WebClient. Check key-store and trust-store.", e);
     }
   }
 
-  private static SslContext buildGenericSslContext() throws SSLException {
-    return SslContextBuilder.forClient()
-        .trustManager(InsecureTrustManagerFactory.INSTANCE)
-        .build();
+  private static SslContext buildGenericSslContext(ClientProperties clientProperties)
+      throws SSLException {
+    var sslBuilder = SslContextBuilder.forClient()
+        .trustManager(InsecureTrustManagerFactory.INSTANCE);
+    applySslProtocol(sslBuilder, clientProperties);
+    return sslBuilder.build();
+  }
+
+  private static void applySslProtocol(SslContextBuilder sslBuilder,
+      ClientProperties clientProperties) {
+    var protocol = clientProperties.getSslProtocol();
+    if (!"TLS".equalsIgnoreCase(protocol)) {
+      sslBuilder.protocols(protocol);
+    }
   }
 
   private static ConnectionProvider buildConnectionProvider(
       String clientId, ClientProperties clientProperties) {
-    return ConnectionProvider.builder(clientId)
-        .maxIdleTime(Duration.ofMinutes(MAX_IDLE_TIME_MINUTES))
-        .maxConnections(clientProperties.getMaxConnections())
-        .metrics(true)
-        .build();
+    var builder = ConnectionProvider.builder(clientId)
+        .maxIdleTime(clientProperties.getConnectionIdleTimeout())
+        .maxConnections(clientProperties.getMaxConnections());
+    if (isMicrometerAvailable()) {
+      builder.metrics(true);
+    }
+    return builder.build();
+  }
+
+  private static boolean isMicrometerAvailable() {
+    try {
+      Class.forName("io.micrometer.core.instrument.Metrics");
+      return true;
+    } catch (ClassNotFoundException e) {
+      return false;
+    }
   }
 
   private static void doOnConnected(Connection conn, Logbook logbook,
       ClientProperties clientProperties) {
-    var requestTimeoutMillis = clientProperties.getRequestTimeoutMillis();
-    var responseTimeoutMillis = clientProperties.getResponseTimeoutMillis();
-    conn.addHandlerLast(new ReadTimeoutHandler(responseTimeoutMillis, TimeUnit.MILLISECONDS))
-        .addHandlerLast(new WriteTimeoutHandler(requestTimeoutMillis, TimeUnit.MILLISECONDS))
-        .addHandlerLast(new LogbookClientHandler(logbook));
+    conn.addHandlerLast(new ReadTimeoutHandler(
+            clientProperties.getResponseTimeout().toMillis(), TimeUnit.MILLISECONDS))
+        .addHandlerLast(new WriteTimeoutHandler(
+            clientProperties.getRequestTimeout().toMillis(), TimeUnit.MILLISECONDS));
+    if (clientProperties.isLoggingEnabled() && logbook != null) {
+      conn.addHandlerLast(new LogbookClientHandler(logbook));
+    }
   }
 
   public static void proxy(ProxyProvider.TypeSpec typeSpec,
       ClientProperties clientProperties) {
     var proxyConfig = Objects.requireNonNull(clientProperties.getProxyConfig(), "ProxyConfig cannot be null");
     typeSpec.type(ProxyProvider.Proxy.HTTP)
-        .address(InetSocketAddress.createUnresolved(proxyConfig.getProxyHost(), proxyConfig.getProxyPort()))
-        .connectTimeoutMillis(clientProperties.getResponseTimeoutMillis())
+        .socketAddress(InetSocketAddress.createUnresolved(proxyConfig.getProxyHost(), proxyConfig.getProxyPort()))
+        .connectTimeoutMillis(clientProperties.getResponseTimeout().toMillis())
         .nonProxyHosts(nonProxyHostsPattern(clientProperties));
   }
 

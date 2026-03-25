@@ -7,14 +7,21 @@ import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.opentmf.client.common.exception.OpenTmfClientNotFoundException;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.client.common.util.HttpClientUtil;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
-import org.springframework.lang.NonNull;
 import org.springframework.web.client.RestClientResponseException;
 
+/**
+ * Utility methods for synchronous HTTP clients ({@code RestTemplate} and {@code RestClient}).
+ *
+ * <p>All methods in this class work equally well with both client types because they operate on
+ * the shared exception hierarchy ({@link RestClientResponseException},
+ * {@link OpenTmfClientResponseException}) rather than on specific client APIs.</p>
+ */
 @Slf4j
 public final class RestTemplateUtil {
 

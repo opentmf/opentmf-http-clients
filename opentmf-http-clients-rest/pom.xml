@@ -11,7 +11,7 @@
   <artifactId>opentmf-http-clients-rest</artifactId>
 
   <description>
-    Synchronous (RestTemplate) interfaces and utilities for OpenTMF HTTP clients.
+    Synchronous (RestTemplate / RestClient) interfaces and utilities for OpenTMF HTTP clients.
   </description>
 
   <dependencies>
