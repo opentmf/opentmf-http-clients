@@ -9,6 +9,7 @@
   </parent>
 
   <artifactId>opentmf-http-clients-reactive</artifactId>
+  <name>opentmf-http-clients-reactive</name>
 
   <description>
     Reactive (WebClient / Reactor Netty) interfaces and utilities for OpenTMF HTTP clients.

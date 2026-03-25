@@ -9,6 +9,7 @@
   </parent>
 
   <artifactId>opentmf-http-clients-starter-reactive</artifactId>
+  <name>opentmf-http-clients-starter-reactive</name>
   <packaging>pom</packaging>
 
   <description>

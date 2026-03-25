@@ -9,6 +9,7 @@
   </parent>
 
   <artifactId>opentmf-http-clients-rest</artifactId>
+  <name>opentmf-http-clients-rest</name>
 
   <description>
     Synchronous (RestTemplate / RestClient) interfaces and utilities for OpenTMF HTTP clients.

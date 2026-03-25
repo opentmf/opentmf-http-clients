@@ -9,6 +9,7 @@
   </parent>
 
   <artifactId>opentmf-http-clients-bearer-provider</artifactId>
+  <name>opentmf-http-clients-bearer-provider</name>
 
   <description>
     Bearer token retrieval logic with dynamic caching using Caffeine.

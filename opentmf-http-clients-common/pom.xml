@@ -9,6 +9,7 @@
   </parent>
 
   <artifactId>opentmf-http-clients-common</artifactId>
+  <name>opentmf-http-clients-common</name>
 
   <description>
     Common models, interfaces, and utilities for OpenTMF HTTP clients.

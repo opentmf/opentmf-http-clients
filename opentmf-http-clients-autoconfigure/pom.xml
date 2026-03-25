@@ -9,6 +9,7 @@
   </parent>
 
   <artifactId>opentmf-http-clients-autoconfigure</artifactId>
+  <name>opentmf-http-clients-autoconfigure</name>
 
   <description>
     Spring Boot auto-configuration for OpenTMF HTTP clients.

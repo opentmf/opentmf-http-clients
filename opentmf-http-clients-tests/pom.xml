@@ -9,6 +9,7 @@
   </parent>
 
   <artifactId>opentmf-http-clients-tests</artifactId>
+  <name>opentmf-http-clients-tests</name>
 
   <dependencies>
     <dependency>
