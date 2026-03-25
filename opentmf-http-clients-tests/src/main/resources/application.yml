@@ -1,0 +1,57 @@
+opentmf:
+  client-type: jdk
+  http-clients:
+    firstBasic:
+      client-type: netty
+      fixed-headers:
+        header1: value1
+      basic-auth:
+        username: user1
+        password: pass1
+
+    secondBasic:
+      client-type: netty
+      fixed-headers:
+        header1: value1
+        header2: value2
+      basic-auth:
+        username: user2
+        password: pass2
+
+    firstBearer:
+      client-type: netty
+      fixed-headers:
+        header1: value1
+      bearer-auth:
+        use-mock: false
+        token-url: http://localhost:1080/token
+        client-id: user
+        client-secret: pass
+        username-field: username
+        form-data:
+          username: user
+          password: pass
+          scope: openid
+          grant_type: password
+
+    healthCheck:
+      client-type: netty
+      request-timeout-millis: 5000
+      response-timeout-millis: 10000
+
+    syncBasic:
+      client-type: jdk
+      basic-auth:
+        username: syncUser
+        password: syncPass
+
+    syncBearer:
+      client-type: jdk
+      bearer-auth:
+        use-mock: true
+        token-url: http://localhost:1080/token
+        client-id: user
+        client-secret: pass
+        form-data:
+          grant_type: client_credentials
+          scope: openid

@@ -1,0 +1,26 @@
+{
+  "hints": [
+    {
+      "name": "opentmf.client-type",
+      "values": [
+        { "value": "jdk",      "description": "Synchronous RestTemplate backed by JDK HttpClient (default)" },
+        { "value": "apache",   "description": "Synchronous RestTemplate backed by Apache HttpClient 5" },
+        { "value": "netty",    "description": "Reactive WebClient backed by Reactor Netty" },
+        { "value": "reactive", "description": "Alias for netty — reactive WebClient backed by Reactor Netty" },
+        { "value": "rest",     "description": "Alias for jdk — synchronous RestTemplate backed by JDK HttpClient" },
+        { "value": "servlet",  "description": "Alias for jdk — synchronous RestTemplate backed by JDK HttpClient" }
+      ]
+    },
+    {
+      "name": "opentmf.http-clients.values.client-type",
+      "values": [
+        { "value": "jdk",      "description": "Synchronous RestTemplate backed by JDK HttpClient" },
+        { "value": "apache",   "description": "Synchronous RestTemplate backed by Apache HttpClient 5" },
+        { "value": "netty",    "description": "Reactive WebClient backed by Reactor Netty" },
+        { "value": "reactive", "description": "Alias for netty — reactive WebClient backed by Reactor Netty" },
+        { "value": "rest",     "description": "Alias for jdk — synchronous RestTemplate backed by JDK HttpClient" },
+        { "value": "servlet",  "description": "Alias for jdk — synchronous RestTemplate backed by JDK HttpClient" }
+      ]
+    }
+  ]
+}
