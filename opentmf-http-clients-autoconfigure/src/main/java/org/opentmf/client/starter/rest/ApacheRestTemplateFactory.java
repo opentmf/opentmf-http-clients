@@ -29,18 +29,16 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.DefaultUriBuilderFactory;
-import org.zalando.logbook.Logbook;
-import org.zalando.logbook.spring.LogbookClientHttpRequestInterceptor;
 
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnClass(name = "org.apache.hc.client5.http.impl.classic.CloseableHttpClient")
 @Slf4j
 public class ApacheRestTemplateFactory implements RestTemplateFactory {
 
-  private final ObjectProvider<Logbook> logbookProvider;
+  private final RestLogbookSupport logbookSupport;
 
-  public ApacheRestTemplateFactory(ObjectProvider<Logbook> logbookProvider) {
-    this.logbookProvider = logbookProvider;
+  public ApacheRestTemplateFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider) {
+    this.logbookSupport = logbookSupportProvider.getIfAvailable();
   }
 
   @Override
@@ -153,9 +151,8 @@ public class ApacheRestTemplateFactory implements RestTemplateFactory {
 
   private void addLogbookInterceptor(RestTemplate restTemplate, ClientProperties properties) {
     if (properties.isLoggingEnabled()) {
-      var logbook = logbookProvider.getIfAvailable();
-      if (logbook != null) {
-        restTemplate.getInterceptors().add(new LogbookClientHttpRequestInterceptor(logbook));
+      if (logbookSupport != null) {
+        logbookSupport.addInterceptor(restTemplate);
       } else {
         log.warn("Client has logging-enabled: true, but no Logbook bean found. "
             + "Add org.zalando:logbook-spring to your classpath to enable HTTP logging.");

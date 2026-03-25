@@ -133,3 +133,19 @@ base64 -w0 truststore-cert.jks.base64 > truststore-cert.jks.base64.base64
 ```
 
 Then set the `trust-store.base64-jks` parameter in your client configuration.
+
+
+| client-type | logging-enabled | has-logbook-dependency |
+|-------------|-----------------|------------------------|
+| netty       | yes             | yes                    |
+| netty       | yes             | no                     |
+| netty       | no              | yes                    |
+| netty       | no              | no                     |
+| jdk         | yes             | yes                    |
+| jdk         | yes             | no                     |
+| jdk         | no              | yes                    |
+| jdk         | no              | no                     |
+| apache      | yes             | yes                    |
+| apache      | yes             | no                     |
+| apache      | no              | yes                    |
+| apache      | no              | no                     |

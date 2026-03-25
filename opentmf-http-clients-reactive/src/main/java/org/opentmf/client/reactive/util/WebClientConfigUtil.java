@@ -13,10 +13,12 @@ import java.security.KeyStore;
 import java.util.Base64;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.TrustManagerFactory;
 import lombok.Generated;
+import org.jspecify.annotations.Nullable;
 import org.opentmf.client.common.exception.OpenTmfClientNotFoundException;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.client.common.model.ClientProperties;
@@ -30,8 +32,6 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
 import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.zalando.logbook.Logbook;
-import org.zalando.logbook.netty.LogbookClientHandler;
 import reactor.core.publisher.Mono;
 import reactor.netty.Connection;
 import reactor.netty.http.client.HttpClient;
@@ -48,11 +48,11 @@ public final class WebClientConfigUtil {
   private static final int MAX_IN_MEMORY = 16 * 1024 * 1024;
 
   public static HttpClient httpClient(
-      Logbook logbook,
+      @Nullable Consumer<Connection> logbookHandler,
       String clientId,
       ClientProperties clientProperties) throws SSLException {
     var sslContext = buildSslContext(clientProperties);
-    var httpClient = httpClient(logbook, sslContext, clientId, clientProperties);
+    var httpClient = httpClient(logbookHandler, sslContext, clientId, clientProperties);
 
     if (clientProperties.getProxyConfig() != null) {
       httpClient = httpClient.proxy(typeSpec -> proxy(typeSpec, clientProperties));
@@ -61,7 +61,7 @@ public final class WebClientConfigUtil {
   }
 
   private static HttpClient httpClient(
-      Logbook logbook,
+      @Nullable Consumer<Connection> logbookHandler,
       SslContext sslContext,
       String clientId,
       ClientProperties clientProperties) {
@@ -76,7 +76,7 @@ public final class WebClientConfigUtil {
         .option(ChannelOption.CONNECT_TIMEOUT_MILLIS,
             (int) clientProperties.getRequestTimeout().toMillis())
         .option(ChannelOption.SO_KEEPALIVE, true)
-        .doOnConnected(connection -> doOnConnected(connection, logbook, clientProperties));
+        .doOnConnected(connection -> doOnConnected(connection, logbookHandler, clientProperties));
 
     if (clientProperties.isFollowRedirects()) {
       client = client.followRedirect(true);
@@ -211,14 +211,15 @@ public final class WebClientConfigUtil {
     }
   }
 
-  private static void doOnConnected(Connection conn, Logbook logbook,
+  private static void doOnConnected(Connection conn,
+      @Nullable Consumer<Connection> logbookHandler,
       ClientProperties clientProperties) {
     conn.addHandlerLast(new ReadTimeoutHandler(
             clientProperties.getResponseTimeout().toMillis(), TimeUnit.MILLISECONDS))
         .addHandlerLast(new WriteTimeoutHandler(
             clientProperties.getRequestTimeout().toMillis(), TimeUnit.MILLISECONDS));
-    if (clientProperties.isLoggingEnabled() && logbook != null) {
-      conn.addHandlerLast(new LogbookClientHandler(logbook));
+    if (clientProperties.isLoggingEnabled() && logbookHandler != null) {
+      logbookHandler.accept(conn);
     }
   }
 

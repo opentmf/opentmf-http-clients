@@ -30,7 +30,6 @@ import org.opentmf.client.common.exception.OpenTmfClientNotFoundException;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.client.common.model.ClientProperties;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.zalando.logbook.Logbook;
 import reactor.test.StepVerifier;
 
 class WebClientConfigUtilIT {
@@ -62,8 +61,7 @@ class WebClientConfigUtilIT {
         .respond(response().withStatusCode(200).withBody("\"world\""));
 
     var props = minimalProperties();
-    var logbook = Logbook.create();
-    var httpClient = WebClientConfigUtil.httpClient(logbook, "test", props);
+    var httpClient = WebClientConfigUtil.httpClient(null, "test", props);
     var webClient = WebClientConfigUtil.createWebClient(
         WebClient.builder(), httpClient, props);
 
@@ -80,8 +78,7 @@ class WebClientConfigUtilIT {
 
     var props = minimalProperties();
     props.setBaseUrl(baseUrl);
-    var logbook = Logbook.create();
-    var httpClient = WebClientConfigUtil.httpClient(logbook, "baseUrlTest", props);
+    var httpClient = WebClientConfigUtil.httpClient(null, "baseUrlTest", props);
     var webClient = WebClientConfigUtil.createWebClient(
         WebClient.builder(), httpClient, props);
 
@@ -100,8 +97,7 @@ class WebClientConfigUtilIT {
 
     var props = minimalProperties();
     props.setFixedHeaders(java.util.Map.of("X-Custom", "value1"));
-    var logbook = Logbook.create();
-    var httpClient = WebClientConfigUtil.httpClient(logbook, "headerTest", props);
+    var httpClient = WebClientConfigUtil.httpClient(null, "headerTest", props);
     var webClient = WebClientConfigUtil.createWebClient(
         WebClient.builder(), httpClient, props);
 
@@ -118,8 +114,7 @@ class WebClientConfigUtilIT {
 
     var props = minimalProperties();
     props.setLoggingEnabled(false);
-    var logbook = Logbook.create();
-    var httpClient = WebClientConfigUtil.httpClient(logbook, "noLog", props);
+    var httpClient = WebClientConfigUtil.httpClient(null, "noLog", props);
     var webClient = WebClientConfigUtil.createWebClient(
         WebClient.builder(), httpClient, props);
 
@@ -136,8 +131,7 @@ class WebClientConfigUtilIT {
 
     var props = minimalProperties();
     props.setFollowRedirects(false);
-    var logbook = Logbook.create();
-    var httpClient = WebClientConfigUtil.httpClient(logbook, "noRedirect", props);
+    var httpClient = WebClientConfigUtil.httpClient(null, "noRedirect", props);
     var webClient = WebClientConfigUtil.createWebClient(
         WebClient.builder(), httpClient, props);
 
@@ -159,8 +153,7 @@ class WebClientConfigUtilIT {
     proxy.setNonProxyHosts(List.of("10.0.0.1"));
     props.setProxyConfig(proxy);
 
-    var logbook = Logbook.create();
-    var httpClient = WebClientConfigUtil.httpClient(logbook, "proxyTest", props);
+    var httpClient = WebClientConfigUtil.httpClient(null, "proxyTest", props);
     assertThat(httpClient).isNotNull();
   }
 
@@ -170,9 +163,8 @@ class WebClientConfigUtilIT {
         .respond(response().withStatusCode(404).withBody("{\"detail\":\"not found\"}"));
 
     var props = minimalProperties();
-    var logbook = Logbook.create();
     try {
-      var httpClient = WebClientConfigUtil.httpClient(logbook, "err404", props);
+      var httpClient = WebClientConfigUtil.httpClient(null, "err404", props);
       var webClient = WebClientConfigUtil.createWebClient(
           WebClient.builder(), httpClient, props);
 
@@ -191,9 +183,8 @@ class WebClientConfigUtilIT {
         .respond(response().withStatusCode(500).withBody("{\"message\":\"internal\"}"));
 
     var props = minimalProperties();
-    var logbook = Logbook.create();
     try {
-      var httpClient = WebClientConfigUtil.httpClient(logbook, "err500", props);
+      var httpClient = WebClientConfigUtil.httpClient(null, "err500", props);
       var webClient = WebClientConfigUtil.createWebClient(
           WebClient.builder(), httpClient, props);
 
@@ -217,9 +208,8 @@ class WebClientConfigUtilIT {
         .respond(response().withStatusCode(502));
 
     var props = minimalProperties();
-    var logbook = Logbook.create();
     try {
-      var httpClient = WebClientConfigUtil.httpClient(logbook, "errEmpty", props);
+      var httpClient = WebClientConfigUtil.httpClient(null, "errEmpty", props);
       var webClient = WebClientConfigUtil.createWebClient(
           WebClient.builder(), httpClient, props);
 
@@ -243,8 +233,7 @@ class WebClientConfigUtilIT {
 
     var props = minimalProperties();
     props.setSslProtocol("TLSv1.3");
-    var logbook = Logbook.create();
-    var httpClient = WebClientConfigUtil.httpClient(logbook, "sslProto", props);
+    var httpClient = WebClientConfigUtil.httpClient(null, "sslProto", props);
     var webClient = WebClientConfigUtil.createWebClient(
         WebClient.builder(), httpClient, props);
 
@@ -300,8 +289,7 @@ class WebClientConfigUtilIT {
     certs.setTrustStore(ts);
     props.setCertificates(certs);
 
-    var logbook = Logbook.create();
-    var httpClient = WebClientConfigUtil.httpClient(logbook, "mtlsTest", props);
+    var httpClient = WebClientConfigUtil.httpClient(null, "mtlsTest", props);
     assertThat(httpClient).isNotNull();
   }
 
@@ -339,8 +327,7 @@ class WebClientConfigUtilIT {
     certs.setKeyStore(ks);
     props.setCertificates(certs);
 
-    var logbook = Logbook.create();
-    var httpClient = WebClientConfigUtil.httpClient(logbook, "mtlsNoTs", props);
+    var httpClient = WebClientConfigUtil.httpClient(null, "mtlsNoTs", props);
     assertThat(httpClient).isNotNull();
   }
 
@@ -355,8 +342,7 @@ class WebClientConfigUtilIT {
     certs.setKeyStore(ks);
     props.setCertificates(certs);
 
-    var logbook = Logbook.create();
-    assertThatThrownBy(() -> WebClientConfigUtil.httpClient(logbook, "badCert", props))
+    assertThatThrownBy(() -> WebClientConfigUtil.httpClient(null, "badCert", props))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("2-Way TLS");
   }

@@ -28,16 +28,6 @@
       <artifactId>opentmf-http-clients-rest</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <dependency>
-      <groupId>org.zalando</groupId>
-      <artifactId>logbook-spring</artifactId>
-      <version>${logbook.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.zalando</groupId>
-      <artifactId>logbook-spring-boot-autoconfigure</artifactId>
-      <version>${logbook.version}</version>
-    </dependency>
   </dependencies>
 
 </project>

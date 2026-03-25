@@ -100,8 +100,8 @@ opentmf-http-clients/                          # Root (POM)
 │       ├── ApacheRestTemplateFactory          # @ConditionalOnClass(CloseableHttpClient)
 │       └── JdkRestTemplateFactory             # Always available (JDK 11+)
 │
-├── opentmf-http-clients-starter-rest/         # POM starter: REST-only (includes logbook-spring)
-├── opentmf-http-clients-starter-reactive/     # POM starter: reactive-only (includes logbook-netty)
+├── opentmf-http-clients-starter-rest/         # POM starter: REST-only (Logbook optional, consumer-provided)
+├── opentmf-http-clients-starter-reactive/     # POM starter: reactive-only (Logbook optional, consumer-provided)
 ├── opentmf-http-clients-starter/              # POM starter: umbrella (REST + reactive + httpclient5)
 └── opentmf-http-clients-tests/                # Integration tests
 ```
@@ -253,7 +253,7 @@ Required artifacts per client type:
 - REST (`jdk`, `apache`): `org.zalando:logbook-spring`
 - Reactive (`netty`): `org.zalando:logbook-netty`
 
-The starters include the appropriate Logbook dependencies. If Logbook is absent, a WARN is logged and logging is silently skipped.
+The starters do **not** include Logbook — consumers must explicitly add the appropriate artifacts to their project. Logbook wiring is isolated behind `RestLogbookSupport` and `ReactiveLogbookSupport` bridge beans, guarded by `@ConditionalOnClass`, to prevent `TypeNotPresentException` when Logbook is absent. If Logbook is absent, a WARN is logged at startup and logging is silently skipped.
 
 ## HTTP Compression
 
@@ -270,9 +270,8 @@ All three client types support mTLS via `certificates.key-store` and optional `c
 
 ```
 opentmf-http-clients-starter              # Umbrella (REST + reactive + httpclient5)
-├── opentmf-http-clients-starter-rest     # REST: autoconfigure + rest + logbook-spring
-│   └── (users add httpclient5 if needed)
-└── opentmf-http-clients-starter-reactive # Reactive: autoconfigure + reactive + webflux + reactor-netty + logbook-netty
+├── opentmf-http-clients-starter-rest     # REST: autoconfigure + rest (users add logbook-spring + httpclient5 if needed)
+└── opentmf-http-clients-starter-reactive # Reactive: autoconfigure + reactive + webflux + reactor-netty (users add logbook-netty if needed)
 ```
 
 Users pick the starter matching their stack:
@@ -326,7 +325,7 @@ All features listed above are **implemented and passing** `mvn clean verify`.
 
 4. **`SyncTokenClientImpl` uses `RestClient`** — the internal bearer token fetching client uses `RestClient` (not `RestTemplate`) for future-proofing. It reuses the main `{clientId}RestClient` bean.
 
-5. **Logbook optional at library layer** — `logbook-spring` and `logbook-netty` are `<optional>true</optional>` in autoconfigure POM, but included non-optionally in the respective starters.
+5. **Logbook fully optional** — `logbook-spring`, `logbook-netty`, and `logbook-spring-boot-autoconfigure` are `<optional>true</optional>` in the autoconfigure and library module POMs. The starter POMs do **not** include Logbook — consumers must explicitly add the appropriate Logbook artifacts to their project if they want HTTP logging. Logbook wiring is isolated behind `@ConditionalOnClass`-guarded bridge beans (`RestLogbookSupport`, `ReactiveLogbookSupport`) so that no `TypeNotPresentException` occurs when Logbook is absent from the classpath.
 
 6. **`TokenCacheUtil` shared cache factory** — the production `Expiry<String, TokenEntry>` implementation extracted from both registrars into a shared utility, eliminating duplication and enabling direct unit testing.
 

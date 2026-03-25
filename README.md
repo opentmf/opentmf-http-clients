@@ -147,14 +147,15 @@ Duration values accept Spring Boot duration strings: `500ms`, `3s`, `1m`, `PT30S
 > - **JDK** (`client-type: jdk`): the library adds an interceptor that sets `Accept-Encoding: gzip` on outgoing requests and transparently decompresses gzipped responses. When `compression-enabled: false`, the interceptor is not installed.
 
 > **Logbook HTTP logging:**
-> When `logging-enabled: true` (the default), the library wires [Zalando Logbook](https://github.com/zalando/logbook) to log HTTP requests and responses. The Logbook dependency is **optional** at the library layer — if you want logging, you must provide the appropriate Logbook artifact on your classpath:
+> When `logging-enabled: true` (the default), the library wires [Zalando Logbook](https://github.com/zalando/logbook) to log HTTP requests and responses. Logbook is **fully optional** — the starters do **not** pull it in transitively. To enable HTTP logging, add the appropriate Logbook artifacts to your project:
 >
-> | Client type | Required Logbook dependency |
+> | Client type | Required Logbook dependencies |
 > |---|---|
-> | `jdk`, `apache` (REST) | `org.zalando:logbook-spring` |
-> | `netty` (reactive) | `org.zalando:logbook-netty` |
+> | `jdk`, `apache` (REST) | `org.zalando:logbook-spring` + `org.zalando:logbook-spring-boot-autoconfigure` |
+> | `netty` (reactive) | `org.zalando:logbook-netty` + `org.zalando:logbook-spring-boot-autoconfigure` |
+> | Both (umbrella) | All of the above |
 >
-> The **REST starter** (`opentmf-http-clients-starter-rest`) already includes `logbook-spring`. The **reactive starter** (`opentmf-http-clients-starter-reactive`) already includes `logbook-netty`. The **umbrella starter** includes both. If no Logbook artifact is present on the classpath, `logging-enabled` is silently ignored and no logging interceptor is installed.
+> If Logbook is not on the classpath, a WARN is logged at startup and no logging interceptor is installed — the client works normally without it.
 
 ### Bearer Auth Client (Minimal)
 

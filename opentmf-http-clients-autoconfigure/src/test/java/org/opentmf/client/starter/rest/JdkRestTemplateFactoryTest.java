@@ -29,17 +29,18 @@ import org.mockserver.matchers.Times;
 import org.opentmf.client.common.model.ClientProperties;
 import org.springframework.beans.factory.ObjectProvider;
 import org.zalando.logbook.Logbook;
+import org.zalando.logbook.spring.LogbookClientHttpRequestInterceptor;
 
 class JdkRestTemplateFactoryTest {
 
   private static ClientAndServer mockServer;
-  private static final ObjectProvider<Logbook> LOGBOOK_PROVIDER = new ObjectProvider<>() {
-    @Override
-    public Logbook getObject() { return Logbook.builder().build(); }
-    @Override
-    public Logbook getIfAvailable() { return Logbook.builder().build(); }
+  private static final RestLogbookSupport LOGBOOK_SUPPORT =
+      new RestLogbookSupport(new LogbookClientHttpRequestInterceptor(Logbook.builder().build()));
+  private static final ObjectProvider<RestLogbookSupport> SUPPORT_PROVIDER = new ObjectProvider<>() {
+    @Override public RestLogbookSupport getObject() { return LOGBOOK_SUPPORT; }
+    @Override public RestLogbookSupport getIfAvailable() { return LOGBOOK_SUPPORT; }
   };
-  private final JdkRestTemplateFactory factory = new JdkRestTemplateFactory(LOGBOOK_PROVIDER);
+  private final JdkRestTemplateFactory factory = new JdkRestTemplateFactory(SUPPORT_PROVIDER);
 
   @BeforeAll
   static void startServer() {
@@ -160,9 +161,9 @@ class JdkRestTemplateFactoryTest {
 
   @Test
   void create_withNoLogbookBean_noLogbookInterceptor() {
-    ObjectProvider<Logbook> emptyProvider = new ObjectProvider<>() {
-      @Override public Logbook getObject() { return null; }
-      @Override public Logbook getIfAvailable() { return null; }
+    ObjectProvider<RestLogbookSupport> emptyProvider = new ObjectProvider<>() {
+      @Override public RestLogbookSupport getObject() { return null; }
+      @Override public RestLogbookSupport getIfAvailable() { return null; }
     };
     var localFactory = new JdkRestTemplateFactory(emptyProvider);
     var props = new ClientProperties();
