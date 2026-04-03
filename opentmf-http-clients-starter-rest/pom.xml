@@ -10,7 +10,6 @@
 
   <artifactId>opentmf-http-clients-starter-rest</artifactId>
   <name>opentmf-http-clients-starter-rest</name>
-  <packaging>pom</packaging>
 
   <description>
     Spring Boot starter for synchronous (RestTemplate) OpenTMF HTTP clients.

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients).
 For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-opentmf-web-clients) section in the README.
 
+## [2.1.1] — 2026-04-02
+
+### Fixed
+- Removed packaging:pom from the starter modules.
+
+### Changed
+- Bumped Spring Boot version to 4.0.5.
+
 ## [2.1.0] — 2026-03-25
 
 ### Changed

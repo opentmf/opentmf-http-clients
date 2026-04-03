@@ -10,7 +10,6 @@
 
   <artifactId>opentmf-http-clients-starter-reactive</artifactId>
   <name>opentmf-http-clients-starter-reactive</name>
-  <packaging>pom</packaging>
 
   <description>
     Spring Boot starter for reactive (WebClient / Reactor Netty) OpenTMF HTTP clients.
