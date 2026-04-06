@@ -2,8 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
-This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients).
-For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-opentmf-web-clients) section in the README.
+This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients) (v1x).
+For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-v1x) section in the README.
+
+## [2.1.2] — 2026-04-06
+
+### Fixed
+- `RestLogbookAutoConfiguration` and `ReactiveLogbookAutoConfiguration` no longer use
+  `@ConditionalOnBean(Logbook.class)`. The condition evaluated too early when the classes were
+  processed via `@Import` — before Zalando's `LogbookAutoConfiguration` had created the `Logbook`
+  bean. Replaced with `ObjectProvider<Logbook>` which defers resolution and falls back to
+  `Logbook.create()` if no custom `Logbook` bean is configured. This fixes the "no Logbook bean
+  found" warning even when `logbook-spring-boot-starter` is on the classpath.
 
 ## [2.1.1] — 2026-04-02
 

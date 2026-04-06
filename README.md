@@ -147,13 +147,14 @@ Duration values accept Spring Boot duration strings: `500ms`, `3s`, `1m`, `PT30S
 > - **JDK** (`client-type: jdk`): the library adds an interceptor that sets `Accept-Encoding: gzip` on outgoing requests and transparently decompresses gzipped responses. When `compression-enabled: false`, the interceptor is not installed.
 
 > **Logbook HTTP logging:**
-> When `logging-enabled: true` (the default), the library wires [Zalando Logbook](https://github.com/zalando/logbook) to log HTTP requests and responses. Logbook is **fully optional** — the starters do **not** pull it in transitively. To enable HTTP logging, add the appropriate Logbook artifacts to your project:
+> When `logging-enabled: true` (the default), the library wires [Zalando Logbook](https://github.com/zalando/logbook) to log HTTP requests and responses. Logbook is **fully optional** — the starters do **not** pull it in transitively. To enable HTTP logging, add the appropriate Logbook dependency to your project:
 >
-> | Client type | Required Logbook dependencies |
+> | Client type | Required dependency |
 > |---|---|
-> | `jdk`, `apache` (REST) | `org.zalando:logbook-spring` + `org.zalando:logbook-spring-boot-autoconfigure` |
+> | `jdk`, `apache` (REST) | `org.zalando:logbook-spring-boot-autoconfigure` |
 > | `netty` (reactive) | `org.zalando:logbook-netty` + `org.zalando:logbook-spring-boot-autoconfigure` |
-> | Both (umbrella) | All of the above |
+>
+> `logbook-spring-boot-autoconfigure` transitively provides `logbook-spring`, `logbook-core`, and the `Logbook` bean auto-configuration. For reactive clients, `logbook-netty` must be added separately as it's not included transitively.
 >
 > If Logbook is not on the classpath, a WARN is logged at startup and no logging interceptor is installed — the client works normally without it.
 

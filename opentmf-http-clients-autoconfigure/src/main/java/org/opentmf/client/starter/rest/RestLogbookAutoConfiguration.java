@@ -1,6 +1,6 @@
 package org.opentmf.client.starter.rest;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -12,8 +12,8 @@ import org.zalando.logbook.spring.LogbookClientHttpRequestInterceptor;
 public class RestLogbookAutoConfiguration {
 
   @Bean
-  @ConditionalOnBean(Logbook.class)
-  RestLogbookSupport restLogbookSupport(Logbook logbook) {
+  RestLogbookSupport restLogbookSupport(ObjectProvider<Logbook> logbookProvider) {
+    Logbook logbook = logbookProvider.getIfAvailable(Logbook::create);
     return new RestLogbookSupport(new LogbookClientHttpRequestInterceptor(logbook));
   }
 }
