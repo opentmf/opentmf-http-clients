@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients) (v1x).
 For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-v1x) section in the README.
 
+## [2.1.3] — 2026-04-16
+
+### Fixed
+- `fixed-headers` no longer clobber per-request headers on the REST (`RestTemplate` / `RestClient`)
+  side. The interceptor in `ApacheRestTemplateFactory` and `JdkRestTemplateFactory` now applies each
+  fixed header only when the request hasn't already set it — aligning sync behavior with the reactive
+  `WebClient`, which already treats `fixed-headers` as defaults. This unblocks OAuth token retrieval
+  when `fixed-headers.Content-Type` is configured: `SyncTokenClientImpl`'s
+  `application/x-www-form-urlencoded` is now preserved instead of being overwritten, so token
+  endpoints no longer reject the request.
+
 ## [2.1.2] — 2026-04-06
 
 ### Fixed

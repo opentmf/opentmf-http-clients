@@ -143,7 +143,11 @@ public class ApacheRestTemplateFactory implements RestTemplateFactory {
   private void addFixedHeadersInterceptor(RestTemplate restTemplate, ClientProperties properties) {
     if (!CollectionUtils.isEmpty(properties.getFixedHeaders())) {
       restTemplate.getInterceptors().add((request, body, execution) -> {
-        properties.getFixedHeaders().forEach((k, v) -> request.getHeaders().set(k, v));
+        properties.getFixedHeaders().forEach((k, v) -> {
+          if (!request.getHeaders().containsHeader(k)) {
+            request.getHeaders().set(k, v);
+          }
+        });
         return execution.execute(request, body);
       });
     }
