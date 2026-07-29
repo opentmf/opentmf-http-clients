@@ -152,7 +152,7 @@ public final class ErrorBodyExtractor {
     if (node == null || node.isNull()) {
       return null;
     }
-    String text = node.isTextual() ? node.asText() : node.toString();
+    String text = node.isString() ? node.asString() : node.toString();
     return text.isBlank() ? null : text.trim();
   }
 

@@ -28,8 +28,7 @@ class ErrorBodyExtractorTest {
   void extractMessage_plainText_returnsStatusAndText() {
     byte[] body = "something went wrong".getBytes(StandardCharsets.UTF_8);
     String msg = ErrorBodyExtractor.extractMessage(HttpStatus.INTERNAL_SERVER_ERROR, body);
-    assertThat(msg).startsWith("HTTP 500 Internal Server Error: ");
-    assertThat(msg).contains("something went wrong");
+    assertThat(msg).startsWith("HTTP 500 Internal Server Error: ").contains("something went wrong");
   }
 
   @Test
@@ -46,8 +45,7 @@ class ErrorBodyExtractorTest {
     String json = """
         {"type":"about:blank","title":"Not Found","status":404,"detail":"Party 123 does not exist"}""";
     String msg = ErrorBodyExtractor.extractMessage(HttpStatus.NOT_FOUND, json);
-    assertThat(msg).contains("Party 123 does not exist");
-    assertThat(msg).contains("Not Found");
+    assertThat(msg).contains("Party 123 does not exist").contains("Not Found");
   }
 
   // --- JSON format: TMF Open API ---
@@ -57,8 +55,7 @@ class ErrorBodyExtractorTest {
     String json = """
         {"code":"404","reason":"Not Found","message":"Resource party/123 does not exist","status":"404"}""";
     String msg = ErrorBodyExtractor.extractMessage(HttpStatus.NOT_FOUND, json);
-    assertThat(msg).contains("Resource party/123 does not exist");
-    assertThat(msg).contains("Not Found");
+    assertThat(msg).contains("Resource party/123 does not exist").contains("Not Found");
   }
 
   // --- JSON format: OAuth2 ---
@@ -104,8 +101,7 @@ class ErrorBodyExtractorTest {
     String json = """
         {"foo":"bar","baz":42}""";
     String msg = ErrorBodyExtractor.extractMessage(HttpStatus.BAD_REQUEST, json);
-    assertThat(msg).startsWith("HTTP 400 Bad Request: ");
-    assertThat(msg).contains("foo");
+    assertThat(msg).startsWith("HTTP 400 Bad Request: ").contains("foo");
   }
 
   // --- JSON with numeric-only status/code fields ---
@@ -115,8 +111,7 @@ class ErrorBodyExtractorTest {
     String json = """
         {"code":"404","reason":"Resource not found"}""";
     String msg = ErrorBodyExtractor.extractMessage(HttpStatus.NOT_FOUND, json);
-    assertThat(msg).contains("Resource not found");
-    assertThat(msg).doesNotContain(" — 404");
+    assertThat(msg).contains("Resource not found").doesNotContain(" — 404");
   }
 
   // --- extractMessage with String ---

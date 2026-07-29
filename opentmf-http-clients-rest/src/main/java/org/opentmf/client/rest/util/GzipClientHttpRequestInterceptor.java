@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.util.zip.GZIPInputStream;
 import lombok.Generated;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.client.ClientHttpRequestExecution;
@@ -51,7 +52,7 @@ public final class GzipClientHttpRequestInterceptor implements ClientHttpRequest
   private static class GzipClientHttpResponse implements ClientHttpResponse {
 
     private final ClientHttpResponse delegate;
-    private InputStream decompressedBody;
+    private @Nullable InputStream decompressedBody;
 
     GzipClientHttpResponse(ClientHttpResponse delegate) {
       this.delegate = delegate;

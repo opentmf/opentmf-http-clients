@@ -15,6 +15,7 @@ import org.opentmf.client.common.util.HttpClientUtil;
 import org.opentmf.client.reactive.util.WebClientConfigUtil;
 import org.opentmf.client.reactive.util.WebClientUtil;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
@@ -43,7 +44,7 @@ class WebClientUtilIT {
         .exchangeToMono(response -> {
           if (response.statusCode().isError()) {
             return WebClientUtil.handleError(response, BearerTokenException.class)
-                .flatMap(ex -> Mono.<String>error(ex));
+                .flatMap(Mono::error);
           }
           return response.bodyToMono(String.class);
         });
@@ -68,7 +69,7 @@ class WebClientUtilIT {
         .exchangeToMono(response -> {
           if (response.statusCode().isError()) {
             return WebClientUtil.handleError(response, OpenTmfClientResponseException.class)
-                .flatMap(ex -> Mono.<String>error(ex));
+                .flatMap(Mono::error);
           }
           return response.bodyToMono(String.class);
         });
@@ -128,7 +129,7 @@ class WebClientUtilIT {
     assertThat(WebClientUtil.shouldRetryOn(
         new OpenTmfClientResponseException(HttpStatus.GATEWAY_TIMEOUT))).isTrue();
     assertThat(WebClientUtil.shouldRetryOn(
-        new OpenTmfClientResponseException(HttpStatus.BANDWIDTH_LIMIT_EXCEEDED))).isTrue();
+        new OpenTmfClientResponseException(HttpStatusCode.valueOf(509)))).isTrue();
   }
 
   @Test
@@ -235,7 +236,7 @@ class WebClientUtilIT {
         .exchangeToMono(response -> {
           if (response.statusCode().isError()) {
             return WebClientUtil.handleError(response, BearerTokenException.class)
-                .flatMap(ex -> Mono.<String>error(ex));
+                .flatMap(Mono::error);
           }
           return response.bodyToMono(String.class);
         })
@@ -255,7 +256,7 @@ class WebClientUtilIT {
         .exchangeToMono(response -> {
           if (response.statusCode().isError()) {
             return WebClientUtil.handleError(response, BearerTokenException.class)
-                .flatMap(ex -> Mono.<String>error(ex));
+                .flatMap(Mono::error);
           }
           return response.bodyToMono(String.class);
         })

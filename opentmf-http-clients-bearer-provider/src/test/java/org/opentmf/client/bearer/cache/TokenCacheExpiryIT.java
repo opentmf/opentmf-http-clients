@@ -1,8 +1,10 @@
 package org.opentmf.client.bearer.cache;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -72,15 +74,15 @@ class TokenCacheExpiryIT {
   }
 
   @Test
-  void tokenExpires_afterTtl() throws InterruptedException {
+  void tokenExpires_afterTtl() {
     String first = tokenService.getToken();
     assertThat(first).isNotEmpty().startsWith("eyJ");
 
     // shortTokenClient has expires_in=3, cacheSafetyFactor=0.9 -> effective TTL = 2s
-    Thread.sleep(3_500);
+    await().atMost(Duration.ofSeconds(5)).pollInterval(Duration.ofMillis(250))
+        .until(() -> !first.equals(tokenService.getToken()));
 
     String second = tokenService.getToken();
-    assertThat(second).isNotEmpty().startsWith("eyJ");
-    assertThat(second).isNotEqualTo(first);
+    assertThat(second).isNotEmpty().startsWith("eyJ").isNotEqualTo(first);
   }
 }

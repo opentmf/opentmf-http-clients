@@ -60,8 +60,7 @@ class SyncBearerTokenServiceIT {
   @Test
   void getToken_clientCredentials_returnsValidToken() {
     String token = tokenService.getToken();
-    assertThat(token).isNotEmpty();
-    assertThat(token).startsWith("eyJ");
+    assertThat(token).isNotEmpty().startsWith("eyJ");
   }
 
   @Test
@@ -83,8 +82,7 @@ class SyncBearerTokenServiceIT {
   @Test
   void getToken_withAdditionalScopes() {
     String token = tokenService.getToken("admin");
-    assertThat(token).isNotEmpty();
-    assertThat(token).startsWith("eyJ");
+    assertThat(token).isNotEmpty().startsWith("eyJ");
   }
 
   @Test

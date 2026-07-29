@@ -12,19 +12,18 @@ public class HttpClientUtil {
   private HttpClientUtil() {
   }
 
-  private static final Set<HttpStatus> RETRYABLE_STATUS_CODES = Set.of(
-      HttpStatus.REQUEST_TIMEOUT,
-      HttpStatus.TOO_MANY_REQUESTS,
-      HttpStatus.INTERNAL_SERVER_ERROR,
-      HttpStatus.BAD_GATEWAY,
-      HttpStatus.SERVICE_UNAVAILABLE,
-      HttpStatus.GATEWAY_TIMEOUT,
-      HttpStatus.BANDWIDTH_LIMIT_EXCEEDED
+  private static final Set<Integer> RETRYABLE_STATUS_CODES = Set.of(
+      HttpStatus.REQUEST_TIMEOUT.value(),
+      HttpStatus.TOO_MANY_REQUESTS.value(),
+      HttpStatus.INTERNAL_SERVER_ERROR.value(),
+      HttpStatus.BAD_GATEWAY.value(),
+      HttpStatus.SERVICE_UNAVAILABLE.value(),
+      HttpStatus.GATEWAY_TIMEOUT.value(),
+      509 // Bandwidth Limit Exceeded — no non-deprecated HttpStatus constant
   );
 
   public static boolean isRetryableStatus(HttpStatusCode httpStatusCode) {
-    return httpStatusCode != null
-        && RETRYABLE_STATUS_CODES.contains(HttpStatus.resolve(httpStatusCode.value()));
+    return httpStatusCode != null && RETRYABLE_STATUS_CODES.contains(httpStatusCode.value());
   }
 
   public static <T extends OpenTmfClientResponseException> T createException(

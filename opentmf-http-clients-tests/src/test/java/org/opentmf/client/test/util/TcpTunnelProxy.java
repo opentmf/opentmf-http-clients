@@ -76,13 +76,12 @@ public final class TcpTunnelProxy {
   }
 
   private void handleConnection(Socket clientSocket) {
-    try {
+    try (clientSocket) {
       var reader = new BufferedReader(
           new InputStreamReader(clientSocket.getInputStream(), StandardCharsets.ISO_8859_1));
 
       String connectLine = reader.readLine();
       if (connectLine == null || !connectLine.toUpperCase().startsWith("CONNECT ")) {
-        clientSocket.close();
         return;
       }
 
@@ -115,8 +114,6 @@ public final class TcpTunnelProxy {
       targetToClient.get();
     } catch (Exception e) {
       log.debug("Tunnel connection ended: {}", e.getMessage());
-    } finally {
-      closeQuietly(clientSocket);
     }
   }
 

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.opentmf.client.common.exception.OpenTmfClientNotFoundException;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
@@ -86,20 +87,23 @@ class SyncClientUtilTest {
 
   @Test
   void executeWithRetry_exhaustsRetries_throws() {
-    assertThatThrownBy(() -> SyncClientUtil.executeWithRetry(
-        () -> {
-          throw new OpenTmfClientResponseException(HttpStatus.SERVICE_UNAVAILABLE);
-        }, 2, Duration.ofMillis(1)))
+    var wait = Duration.ofMillis(1);
+    Supplier<String> failing = () -> {
+      throw new OpenTmfClientResponseException(HttpStatus.SERVICE_UNAVAILABLE);
+    };
+    assertThatThrownBy(() -> SyncClientUtil.executeWithRetry(failing, 2, wait))
         .isInstanceOf(OpenTmfClientResponseException.class);
   }
 
   @Test
   void executeWithRetry_nonRetryableError_throwsImmediately() {
     var counter = new AtomicInteger(0);
-    assertThatThrownBy(() -> SyncClientUtil.executeWithRetry(() -> {
+    var wait = Duration.ofMillis(1);
+    Supplier<String> failing = () -> {
       counter.incrementAndGet();
       throw new OpenTmfClientResponseException(HttpStatus.BAD_REQUEST);
-    }, 3, Duration.ofMillis(1)))
+    };
+    assertThatThrownBy(() -> SyncClientUtil.executeWithRetry(failing, 3, wait))
         .isInstanceOf(OpenTmfClientResponseException.class);
     assertThat(counter.get()).isEqualTo(1);
   }

@@ -41,8 +41,7 @@ class ErrorBodyExtractorTest {
         {"type":"about:blank","title":"Not Found","status":404,"detail":"Resource 42 not found"}""";
     String msg = ErrorBodyExtractor.extractMessage(HttpStatus.NOT_FOUND,
         body.getBytes(StandardCharsets.UTF_8));
-    assertThat(msg).contains("Resource 42 not found");
-    assertThat(msg).contains("Not Found");
+    assertThat(msg).contains("Resource 42 not found").contains("Not Found");
   }
 
   @Test
@@ -93,9 +92,8 @@ class ErrorBodyExtractorTest {
         {"status":404,"detail":"item not found"}""";
     String msg = ErrorBodyExtractor.extractMessage(HttpStatus.NOT_FOUND,
         body.getBytes(StandardCharsets.UTF_8));
-    assertThat(msg).contains("item not found");
     // "404" alone should not appear as a title part
-    assertThat(msg).doesNotContain(" — 404");
+    assertThat(msg).contains("item not found").doesNotContain(" — 404");
   }
 
   @Test

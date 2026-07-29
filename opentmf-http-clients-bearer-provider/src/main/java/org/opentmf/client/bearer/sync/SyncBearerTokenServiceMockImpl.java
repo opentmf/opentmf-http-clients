@@ -23,5 +23,6 @@ public class SyncBearerTokenServiceMockImpl implements SyncBearerTokenService {
 
   @Override
   public void clearCache() {
+    // the mock keeps no state — nothing to clear
   }
 }

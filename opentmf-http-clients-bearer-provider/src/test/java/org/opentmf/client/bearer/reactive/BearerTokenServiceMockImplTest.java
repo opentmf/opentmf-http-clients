@@ -1,6 +1,7 @@
 package org.opentmf.client.bearer.reactive;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.net.URI;
 import java.util.Map;
@@ -46,6 +47,6 @@ class BearerTokenServiceMockImplTest {
 
   @Test
   void clearCache_doesNotThrow() {
-    service.clearCache();
+    assertThatCode(service::clearCache).doesNotThrowAnyException();
   }
 }

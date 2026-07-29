@@ -98,6 +98,6 @@ class GzipClientHttpRequestInterceptorTest {
     @Override public String getStatusText() { return "OK"; }
     @Override public HttpHeaders getHeaders() { return headers; }
     @Override public InputStream getBody() { return new java.io.ByteArrayInputStream(body); }
-    @Override public void close() {}
+    @Override public void close() { /* stub — nothing to close */ }
   }
 }

@@ -1,6 +1,7 @@
 package org.opentmf.client.bearer.sync;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import org.junit.jupiter.api.Test;
 
@@ -25,6 +26,6 @@ class SyncBearerTokenServiceMockImplTest {
 
   @Test
   void clearCache_doesNotThrow() {
-    service.clearCache();
+    assertThatCode(service::clearCache).doesNotThrowAnyException();
   }
 }

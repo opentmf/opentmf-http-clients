@@ -1,7 +1,9 @@
 package org.opentmf.client.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.assertj.core.api.Assertions.fail;
 import static org.opentmf.client.test.util.MockServerUtils.BASE_URL;
 import static org.opentmf.client.test.util.MockServerUtils.get;
@@ -18,6 +20,7 @@ import org.opentmf.client.common.util.HttpClientUtil;
 import org.opentmf.client.rest.util.OpenTmfResponseErrorHandler;
 import org.opentmf.client.rest.util.SyncClientUtil;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClientResponseException;
@@ -120,7 +123,7 @@ class SyncClientUtilIT {
     assertThat(SyncClientUtil.shouldRetryOn(
         new OpenTmfClientResponseException(HttpStatus.GATEWAY_TIMEOUT))).isTrue();
     assertThat(SyncClientUtil.shouldRetryOn(
-        new OpenTmfClientResponseException(HttpStatus.BANDWIDTH_LIMIT_EXCEEDED))).isTrue();
+        new OpenTmfClientResponseException(HttpStatusCode.valueOf(509)))).isTrue();
   }
 
   @Test
@@ -198,9 +201,10 @@ class SyncClientUtilIT {
     get(API_PATH, 1, "unavailable", HttpStatus.SERVICE_UNAVAILABLE);
     get(API_PATH, 1, "", HttpStatus.OK);
 
-    SyncClientUtil.executeWithRetry(
+    assertThatCode(() -> SyncClientUtil.executeWithRetry(
         () -> restTemplate.getForObject(BASE_URL + API_PATH, String.class),
-        2, RETRY_WAIT);
+        2, RETRY_WAIT))
+        .doesNotThrowAnyException();
   }
 
   @Test
@@ -385,17 +389,11 @@ class SyncClientUtilIT {
   void remap_convertsToSubclass() {
     get(API_PATH, 1, "{\"error\":\"auth failed\"}", HttpStatus.UNAUTHORIZED);
 
-    assertThatThrownBy(() -> {
-      try {
-        autoWrappedRestTemplate.getForObject(BASE_URL + API_PATH, String.class);
-      } catch (OpenTmfClientResponseException e) {
-        throw HttpClientUtil.remap(e, BearerTokenException.class);
-      }
-    }).isInstanceOf(BearerTokenException.class)
-        .satisfies(ex -> {
-          var bex = (BearerTokenException) ex;
-          assertThat(bex.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-          assertThat(bex.getMessage()).contains("auth failed");
-        });
+    var original = catchThrowableOfType(OpenTmfClientResponseException.class,
+        () -> autoWrappedRestTemplate.getForObject(BASE_URL + API_PATH, String.class));
+
+    BearerTokenException remapped = HttpClientUtil.remap(original, BearerTokenException.class);
+    assertThat(remapped.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    assertThat(remapped.getMessage()).contains("auth failed");
   }
 }

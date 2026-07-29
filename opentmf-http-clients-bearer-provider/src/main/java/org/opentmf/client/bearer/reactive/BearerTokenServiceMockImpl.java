@@ -37,5 +37,6 @@ public class BearerTokenServiceMockImpl implements BearerTokenService {
 
   @Override
   public void clearCache() {
+    // the mock keeps no state — nothing to clear
   }
 }

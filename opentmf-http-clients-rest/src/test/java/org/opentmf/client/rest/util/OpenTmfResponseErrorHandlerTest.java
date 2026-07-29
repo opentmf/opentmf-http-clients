@@ -47,9 +47,9 @@ class OpenTmfResponseErrorHandlerTest {
 
   @Test
   void handleError_404_throwsNotFoundException() throws IOException {
+    var uri = URI.create("/api/items/42");
     try (var response = mockResponseWithBody(HttpStatus.NOT_FOUND, "Resource not found")) {
-      assertThatThrownBy(() -> handler.handleError(
-          URI.create("/api/items/42"), HttpMethod.GET, response))
+      assertThatThrownBy(() -> handler.handleError(uri, HttpMethod.GET, response))
           .isInstanceOf(OpenTmfClientNotFoundException.class)
           .satisfies(ex -> {
             var e = (OpenTmfClientNotFoundException) ex;
@@ -62,9 +62,9 @@ class OpenTmfResponseErrorHandlerTest {
 
   @Test
   void handleError_500_throwsClientResponseException() throws IOException {
+    var uri = URI.create("/api/items");
     try (var response = mockResponseWithBody(HttpStatus.INTERNAL_SERVER_ERROR, "Server error")) {
-      assertThatThrownBy(() -> handler.handleError(
-          URI.create("/api/items"), HttpMethod.POST, response))
+      assertThatThrownBy(() -> handler.handleError(uri, HttpMethod.POST, response))
           .isInstanceOf(OpenTmfClientResponseException.class)
           .isNotInstanceOf(OpenTmfClientNotFoundException.class)
           .satisfies(ex -> {
@@ -77,9 +77,9 @@ class OpenTmfResponseErrorHandlerTest {
 
   @Test
   void handleError_emptyBody() throws IOException {
+    var uri = URI.create("/api");
     try (var response = mockResponseWithBody(HttpStatus.BAD_REQUEST, "")) {
-      assertThatThrownBy(() -> handler.handleError(
-          URI.create("/api"), HttpMethod.GET, response))
+      assertThatThrownBy(() -> handler.handleError(uri, HttpMethod.GET, response))
           .isInstanceOf(OpenTmfClientResponseException.class)
           .satisfies(ex -> {
             var e = (OpenTmfClientResponseException) ex;
@@ -93,9 +93,9 @@ class OpenTmfResponseErrorHandlerTest {
   void handleError_jsonBody_extractsDetail() throws IOException {
     String jsonBody = """
         {"detail":"Validation failed for field 'name'","title":"Bad Request"}""";
+    var uri = URI.create("/api");
     try (var response = mockResponseWithBody(HttpStatus.BAD_REQUEST, jsonBody)) {
-      assertThatThrownBy(() -> handler.handleError(
-          URI.create("/api"), HttpMethod.POST, response))
+      assertThatThrownBy(() -> handler.handleError(uri, HttpMethod.POST, response))
           .isInstanceOf(OpenTmfClientResponseException.class)
           .satisfies(ex -> {
             var e = (OpenTmfClientResponseException) ex;

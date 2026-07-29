@@ -56,8 +56,9 @@ class OpenTmfClientResponseExceptionTest {
   @Test
   void notFoundExceptionInheritsCorrectly() {
     var ex = new OpenTmfClientNotFoundException(HttpStatus.NOT_FOUND, "missing", "body");
-    assertThat(ex).isInstanceOf(OpenTmfClientResponseException.class);
-    assertThat(ex).isInstanceOf(RuntimeException.class);
+    assertThat(ex)
+        .isInstanceOf(OpenTmfClientResponseException.class)
+        .isInstanceOf(RuntimeException.class);
     assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     assertThat(ex.getRawStatusCode()).isEqualTo(404);
     assertThat(ex.getMessage()).isEqualTo("missing");

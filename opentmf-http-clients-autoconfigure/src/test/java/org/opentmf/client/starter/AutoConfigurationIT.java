@@ -289,8 +289,8 @@ class AutoConfigurationIT {
         .run(context -> {
           assertThat(context).hasNotFailed();
           var restClient = (RestClient) context.getBean("rc404RestClient");
-          assertThatThrownBy(() -> restClient.get().uri("/api/missing")
-              .retrieve().body(String.class))
+          var spec = restClient.get().uri("/api/missing").retrieve();
+          assertThatThrownBy(() -> spec.body(String.class))
               .isInstanceOf(OpenTmfClientNotFoundException.class);
         });
   }
@@ -307,8 +307,8 @@ class AutoConfigurationIT {
         .run(context -> {
           assertThat(context).hasNotFailed();
           var restClient = (RestClient) context.getBean("rc500RestClient");
-          assertThatThrownBy(() -> restClient.get().uri("/api/error")
-              .retrieve().body(String.class))
+          var spec = restClient.get().uri("/api/error").retrieve();
+          assertThatThrownBy(() -> spec.body(String.class))
               .isInstanceOf(OpenTmfClientResponseException.class)
               .isNotInstanceOf(OpenTmfClientNotFoundException.class);
         });

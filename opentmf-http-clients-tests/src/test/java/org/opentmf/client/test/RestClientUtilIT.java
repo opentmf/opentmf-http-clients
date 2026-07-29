@@ -50,7 +50,8 @@ class RestClientUtilIT {
   void restClient_404_throwsNotFoundException() {
     get(API_PATH, 1, "{\"detail\":\"not found\"}", HttpStatus.NOT_FOUND);
 
-    assertThatThrownBy(() -> restClient.get().uri(API_PATH).retrieve().body(String.class))
+    var spec = restClient.get().uri(API_PATH).retrieve();
+    assertThatThrownBy(() -> spec.body(String.class))
         .isInstanceOf(OpenTmfClientNotFoundException.class)
         .satisfies(ex -> {
           var e = (OpenTmfClientNotFoundException) ex;
@@ -63,7 +64,8 @@ class RestClientUtilIT {
   void restClient_500_throwsClientResponseException() {
     get(API_PATH, 1, "{\"error\":\"internal\"}", HttpStatus.INTERNAL_SERVER_ERROR);
 
-    assertThatThrownBy(() -> restClient.get().uri(API_PATH).retrieve().body(String.class))
+    var spec = restClient.get().uri(API_PATH).retrieve();
+    assertThatThrownBy(() -> spec.body(String.class))
         .isInstanceOf(OpenTmfClientResponseException.class)
         .isNotInstanceOf(OpenTmfClientNotFoundException.class)
         .satisfies(ex -> {
@@ -76,7 +78,8 @@ class RestClientUtilIT {
   void restClient_emptyBody_throwsExceptionWithStatusMessage() {
     get(API_PATH, 1, "", HttpStatus.BAD_REQUEST);
 
-    assertThatThrownBy(() -> restClient.get().uri(API_PATH).retrieve().body(String.class))
+    var spec = restClient.get().uri(API_PATH).retrieve();
+    assertThatThrownBy(() -> spec.body(String.class))
         .isInstanceOf(OpenTmfClientResponseException.class)
         .satisfies(ex -> {
           var e = (OpenTmfClientResponseException) ex;

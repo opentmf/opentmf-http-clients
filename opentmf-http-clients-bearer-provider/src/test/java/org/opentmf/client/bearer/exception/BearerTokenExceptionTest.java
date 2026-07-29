@@ -11,8 +11,9 @@ class BearerTokenExceptionTest {
   @Test
   void inheritsFromOpenTmfClientResponseException() {
     var ex = new BearerTokenException(HttpStatus.UNAUTHORIZED);
-    assertThat(ex).isInstanceOf(OpenTmfClientResponseException.class);
-    assertThat(ex).isInstanceOf(RuntimeException.class);
+    assertThat(ex)
+        .isInstanceOf(OpenTmfClientResponseException.class)
+        .isInstanceOf(RuntimeException.class);
   }
 
   @Test
