@@ -2,22 +2,20 @@ package org.opentmf.client.bearer.reactive;
 
 import static java.util.Collections.emptyMap;
 import static org.opentmf.client.bearer.util.BearerTokenUtil.SCOPE;
+import static org.opentmf.client.bearer.util.BearerTokenUtil.enrichFormData;
 import static org.opentmf.client.bearer.util.BearerTokenUtil.findScope;
 import static org.opentmf.client.bearer.util.BearerTokenUtil.findUsername;
 import static org.opentmf.client.common.util.TokenUtil.TOKEN_TYPE_BEARER;
 import static org.opentmf.client.common.util.TokenUtil.cacheKey;
-import static org.springframework.util.StringUtils.hasText;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import java.net.URI;
-import java.util.HashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.opentmf.client.bearer.model.TokenEntry;
+import org.opentmf.client.bearer.util.BearerTokenUtil;
 import org.opentmf.client.common.model.BearerAuthConfig;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -71,7 +69,7 @@ public class BearerTokenServiceImpl implements BearerTokenService {
       return Mono.just(extractToken(cached.getTokenData()));
     }
 
-    var multiValueMap = enrich(username, scope, enricher);
+    var multiValueMap = enrichFormData(config, username, scope, enricher);
     return tokenClient.retrieveToken(uri, multiValueMap)
         .doOnNext(tokenData -> {
           var entry = TokenEntry.from(tokenData, config.getExpiresInField(),
@@ -82,21 +80,6 @@ public class BearerTokenServiceImpl implements BearerTokenService {
   }
 
   private String extractToken(ObjectNode objectNode) {
-    return objectNode.get(config.getTokenField()).stringValue();
-  }
-
-  private MultiValueMap<String, String> enrich(String username, String scope,
-      Map<String, String> enricher) {
-    var map = new HashMap<>(config.getFormData());
-    map.putAll(enricher);
-    if (hasText(username)) {
-      map.put(config.getUsernameField(), username);
-    }
-    if (hasText(scope)) {
-      map.put(SCOPE, scope);
-    }
-    var linkedMap = new LinkedMultiValueMap<String, String>();
-    map.forEach(linkedMap::add);
-    return linkedMap;
+    return BearerTokenUtil.extractToken(objectNode, config.getTokenField());
   }
 }
