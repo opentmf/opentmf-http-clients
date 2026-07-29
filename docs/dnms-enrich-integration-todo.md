@@ -28,6 +28,32 @@ Closing must release the underlying connection manager (Apache CM
 `close()`); swap must be safe under concurrent in-flight requests
 (old client finishes its calls, then closes).
 
+**Close semantics per client type (decided 2026-07-15 — library stays on
+Java 17, no baseline bump):**
+
+- **APACHE** — the recommended type for dynamic/churning clients (see also
+  #4): real pool control, `CloseableHttpClient.close(CloseMode.GRACEFUL)`,
+  pool metrics. Note graceful close does not *wait* for in-flight requests;
+  quiescent swap needs reference counting or a grace-period delayed close.
+- **JDK** — `java.net.http.HttpClient` implements `AutoCloseable` only since
+  Java 21 (JDK-8304165), and this library compiles against 17. The registry
+  must use a guarded close, which compiles on 17 and does a real close
+  (waiting for in-flight requests) on 21+ runtimes:
+
+  ```java
+  if (httpClient instanceof AutoCloseable closeable) {
+    closeable.close();
+  }
+  ```
+
+  On a 17 runtime the branch is skipped and the abandoned client is
+  reclaimed by GC — acceptable, because an un-closed JDK client only pins a
+  selector thread until GC. This is also why the *static* client path keeps
+  its invariant: clients are long-lived per-`<id>` singletons created at
+  startup; never create per-request clients.
+- **NETTY** — dispose the client's `ConnectionProvider`
+  (`disposeLater()` drains gracefully).
+
 ## 2. Expose `ClientProperties.validate()` publicly
 
 **Problem:** dnms-enrich's SRE "test connection" and health check must
