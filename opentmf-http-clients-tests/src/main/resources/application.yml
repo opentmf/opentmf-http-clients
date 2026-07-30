@@ -55,3 +55,23 @@ opentmf:
         form-data:
           grant_type: client_credentials
           scope: openid
+
+    stormSync:
+      client-type: jdk
+      resilience:
+        enabled: true
+        circuit-breaker:
+          sliding-window-size: 4
+          minimum-number-of-calls: 4
+          wait-duration-in-open-state: 60s
+        bulkhead:
+          max-concurrent-calls: 10
+
+    stormReactive:
+      client-type: netty
+      resilience:
+        enabled: true
+        circuit-breaker:
+          sliding-window-size: 4
+          minimum-number-of-calls: 4
+          wait-duration-in-open-state: 60s

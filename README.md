@@ -133,6 +133,7 @@ Each client can override this via a per-client `client-type` property. The three
 | `basic-auth` | object | *(none)* | Basic authentication credentials |
 | `bearer-auth` | object | *(none)* | OAuth2 bearer token configuration |
 | `paths` | map | *(none)* | Named path/scope entries |
+| `resilience` | object | *(disabled)* | Optional resilience4j circuit breaker / bulkhead / time limiter — see [Resilience](#resilience-circuit-breaker--bulkhead) |
 
 Duration values accept Spring Boot duration strings: `500ms`, `3s`, `1m`, `PT30S`.
 
@@ -686,6 +687,66 @@ The `handleError(...)` methods on `WebClientUtil` and `SyncClientUtil` remain av
 `SyncClientUtil` works with both `RestClient` and `RestTemplate` — all its methods (`executeWithRetry`, `emptyOn404`, `emptyOn`, `shouldRetryOn`, `handleError`) operate on the shared exception hierarchy (`RestClientResponseException`, `OpenTmfClientResponseException`) rather than on client-specific APIs.
 
 `HttpClientUtil` exposes the shared retryable-status logic (`isRetryableStatus`, `createException`, `remap`) used by both `WebClientUtil` and `SyncClientUtil`.
+
+## Resilience (circuit breaker & bulkhead)
+
+The library can optionally decorate every client with [resilience4j](https://resilience4j.readme.io/): a **circuit breaker** (stop hammering a degraded remote), a **bulkhead** (bound concurrent calls), and — for reactive clients — a **time limiter**. It is **off by default** and fully optional: without the resilience4j jars on the classpath, or without `resilience.enabled: true`, nothing changes.
+
+Add the dependencies (versions are yours to manage; the library compiles against 2.x):
+
+```xml
+<dependency>
+  <groupId>io.github.resilience4j</groupId>
+  <artifactId>resilience4j-circuitbreaker</artifactId>
+</dependency>
+<dependency>
+  <groupId>io.github.resilience4j</groupId>
+  <artifactId>resilience4j-bulkhead</artifactId>
+</dependency>
+<!-- netty clients additionally need: -->
+<dependency>
+  <groupId>io.github.resilience4j</groupId>
+  <artifactId>resilience4j-reactor</artifactId>
+</dependency>
+<!-- optional, for resilience4j.circuitbreaker.* metrics: -->
+<dependency>
+  <groupId>io.github.resilience4j</groupId>
+  <artifactId>resilience4j-micrometer</artifactId>
+</dependency>
+```
+
+Then enable per client:
+
+```yaml
+opentmf:
+  http-clients:
+    onedms:
+      base-url: https://onedms.example.com
+      resilience:
+        enabled: true                       # default false
+        circuit-breaker:
+          failure-rate-threshold: 50        # %, default 50
+          slow-call-rate-threshold: 100     # %, default 100
+          slow-call-duration-threshold: 5s
+          sliding-window-size: 50
+          minimum-number-of-calls: 20
+          wait-duration-in-open-state: 30s
+          permitted-calls-in-half-open: 5
+          record-status-codes: [500, 502, 503, 504]
+        bulkhead:
+          max-concurrent-calls: 25          # 0 (default) = bulkhead disabled
+          max-wait-duration: 0s
+        time-limiter:                       # netty clients only
+          timeout-duration: 10s             # unset (default) = disabled
+```
+
+**Semantics:**
+
+- **One configuration per client id, applied to every shape of that id** — `<id>RestTemplate`, `<id>RestClient` or `<id>WebClient`, *and* the client's bearer-token calls. A broken identity provider opens the same circuit as the API itself, preventing token-endpoint stampedes.
+- **Order:** bulkhead → circuit breaker → (time limit) → HTTP call. Your `executeWithRetry` / `WebClientUtil.retry` calls sit *outside* all of it.
+- **What trips the breaker:** connection errors, timeouts, and responses whose status is in `record-status-codes`. 4xx responses never do — they indicate caller bugs, not a degraded remote. 404 stays a normal outcome (`emptyOn404` unaffected).
+- **Rejected calls** (open circuit, full bulkhead) throw `OpenTmfClientResilienceException` — *not* part of the `OpenTmfClientResponseException` hierarchy, so the retry utilities never retry them: an open circuit means "stop calling". Map it to `503 Service Unavailable` in your error advice if you expose the failure upstream.
+- **Metrics:** with a `MeterRegistry` bean and `resilience4j-micrometer` present, `resilience4j.circuitbreaker.*` and `resilience4j.bulkhead.*` meters (tagged `name=<clientId>`) appear on the standard scrape automatically.
 
 ## Migration from v1.x
 

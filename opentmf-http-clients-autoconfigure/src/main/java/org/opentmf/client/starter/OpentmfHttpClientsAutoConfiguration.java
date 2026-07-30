@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Import;
 @EnableConfigurationProperties(OpentmfHttpClientsConfig.class)
 @Import({
     StringToClientTypeConverter.class,
+    ResilienceAutoConfiguration.class,
     org.opentmf.client.starter.reactive.ReactiveClientRegistrar.class,
     org.opentmf.client.starter.reactive.ReactiveLogbookAutoConfiguration.class,
     org.opentmf.client.starter.rest.RestClientRegistrar.class,

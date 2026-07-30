@@ -143,6 +143,14 @@ public class ClientProperties {
   private Map<@NotEmpty String, @Valid PathScope> paths;
 
   /**
+   * Optional resilience4j decoration (circuit breaker, bulkhead, reactive time limiter) applied
+   * to every client shape of this id. Disabled by default; requires the resilience4j jars on the
+   * classpath when enabled.
+   */
+  @Valid
+  private ResilienceProperties resilience = new ResilienceProperties();
+
+  /**
    * Overrides the global {@code opentmf.client-type} for this client only.
    */
   private ClientType clientType;

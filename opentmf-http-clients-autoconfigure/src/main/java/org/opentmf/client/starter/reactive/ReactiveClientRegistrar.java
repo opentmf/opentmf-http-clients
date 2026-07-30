@@ -10,6 +10,8 @@ import org.opentmf.client.bearer.reactive.BearerTokenServiceImpl;
 import org.opentmf.client.bearer.reactive.BearerTokenServiceMockImpl;
 import org.opentmf.client.bearer.util.TokenCacheUtil;
 import org.opentmf.client.common.model.ClientProperties;
+import org.opentmf.client.common.resilience.ResilienceRegistries;
+import org.opentmf.client.reactive.resilience.ReactiveResilience;
 import org.opentmf.client.reactive.service.api.TokenService;
 import org.opentmf.client.reactive.service.impl.BasicTokenServiceImpl;
 import org.opentmf.client.reactive.service.impl.NoOpTokenService;
@@ -31,14 +33,17 @@ public class ReactiveClientRegistrar {
   private final ConfigurableListableBeanFactory factory;
   private final WebClient.Builder webClientBuilder;
   private final ReactiveLogbookSupport logbookSupport;
+  private final ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider;
 
   @Autowired
   public ReactiveClientRegistrar(ConfigurableApplicationContext ctx,
       WebClient.Builder webClientBuilder,
-      ObjectProvider<ReactiveLogbookSupport> logbookSupportProvider) {
+      ObjectProvider<ReactiveLogbookSupport> logbookSupportProvider,
+      ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider) {
     this.factory = ctx.getBeanFactory();
     this.webClientBuilder = webClientBuilder;
     this.logbookSupport = logbookSupportProvider.getIfAvailable();
+    this.resilienceRegistriesProvider = resilienceRegistriesProvider;
   }
 
   public void registerBeans(String clientId, ClientProperties properties) {
@@ -46,20 +51,29 @@ public class ReactiveClientRegistrar {
       log.warn("Client '{}' has logging-enabled: true, but no Logbook bean found. "
           + "Add org.zalando:logbook-netty to your classpath to enable HTTP logging.", clientId);
     }
-    registerIfAbsent(clientId + WEB_CLIENT, buildWebClient(clientId, properties));
+    registerIfAbsent(clientId + WEB_CLIENT, buildWebClient(clientId, clientId, properties));
     registerIfAbsent(clientId + TOKEN_SERVICE, buildTokenService(clientId, properties));
   }
 
-  private WebClient buildWebClient(String clientId, ClientProperties properties) {
+  /**
+   * Builds a WebClient. The {@code resilienceName} deliberately differs from
+   * {@code connectionName} for token clients: the token WebClient gets its own connection pool
+   * ({@code <id>Token}) but shares the OWNING client's resilience instances, so a broken token
+   * endpoint opens the same circuit.
+   */
+  private WebClient buildWebClient(String connectionName, String resilienceName,
+      ClientProperties properties) {
     try {
       Consumer<Connection> logbookHandler =
           (properties.isLoggingEnabled() && logbookSupport != null)
               ? logbookSupport::addHandler
               : null;
-      var httpClient = WebClientConfigUtil.httpClient(logbookHandler, clientId, properties);
-      return WebClientConfigUtil.createWebClient(webClientBuilder, httpClient, properties);
+      var httpClient = WebClientConfigUtil.httpClient(logbookHandler, connectionName, properties);
+      var webClient = WebClientConfigUtil.createWebClient(webClientBuilder, httpClient, properties);
+      return ReactiveResilience.decorate(webClient, resilienceName, properties,
+          resilienceRegistriesProvider.getIfAvailable());
     } catch (Exception e) {
-      throw new IllegalArgumentException("Can't create WebClient for " + clientId, e);
+      throw new IllegalArgumentException("Can't create WebClient for " + connectionName, e);
     }
   }
 
@@ -76,7 +90,7 @@ public class ReactiveClientRegistrar {
     if (bearerConfig.isUseMock()) {
       return new BearerTokenServiceMockImpl();
     }
-    var tokenWebClient = buildWebClient(clientId + "Token", properties);
+    var tokenWebClient = buildWebClient(clientId + "Token", clientId, properties);
     var tokenClient = new BearerTokenClientImpl(properties, bearerConfig, tokenWebClient);
     var cache = TokenCacheUtil.buildTokenCache();
     return new BearerTokenServiceImpl(bearerConfig, cache, tokenClient);

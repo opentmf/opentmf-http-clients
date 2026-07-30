@@ -8,6 +8,17 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
 ## [2.1.4] — 2026-07-29
 
 ### Added
+- **Optional resilience4j integration** — per-client, config-driven circuit breaker, bulkhead and
+  (reactive-only) time limiter under `opentmf.http-clients.<id>.resilience.*`. Off by default and
+  classpath-gated: without the resilience4j jars or without `resilience.enabled: true`, behavior
+  is unchanged. One configuration decorates every client shape of the id (`RestTemplate`,
+  `RestClient`, `WebClient`) *and* its bearer-token calls, which share the same named instances.
+  Only connection errors, timeouts and configured `record-status-codes` (default 500/502/503/504)
+  trip the breaker — 4xx never does. Rejected calls throw the new
+  `OpenTmfClientResilienceException` (outside the response-exception hierarchy, so
+  `executeWithRetry`/`WebClientUtil.retry` never retry an open circuit). With a `MeterRegistry`
+  and `resilience4j-micrometer` present, `resilience4j.circuitbreaker.*`/`resilience4j.bulkhead.*`
+  meters are bound automatically. See the README "Resilience" section.
 - Javadoc for every user-configurable property (`ClientProperties` and its nested types,
   `BasicAuthConfig`, `BearerAuthConfig`, `OpentmfHttpClientsConfig`), including the per-client-type
   behavioural differences (e.g. `request-timeout` is the TCP connect timeout on JDK/Netty but the

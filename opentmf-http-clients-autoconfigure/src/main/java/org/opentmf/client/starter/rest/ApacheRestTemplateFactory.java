@@ -13,6 +13,7 @@ import org.apache.hc.core5.http.io.SocketConfig;
 import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
 import org.opentmf.client.common.model.ClientProperties;
+import org.opentmf.client.common.resilience.ResilienceRegistries;
 import org.opentmf.client.rest.util.OpenTmfResponseErrorHandler;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -27,8 +28,9 @@ import org.springframework.web.util.DefaultUriBuilderFactory;
 @Slf4j
 public class ApacheRestTemplateFactory extends AbstractRestTemplateFactory {
 
-  public ApacheRestTemplateFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider) {
-    super(logbookSupportProvider);
+  public ApacheRestTemplateFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider,
+      ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider) {
+    super(logbookSupportProvider, resilienceRegistriesProvider);
   }
 
   @Override
@@ -86,6 +88,7 @@ public class ApacheRestTemplateFactory extends AbstractRestTemplateFactory {
 
       var restTemplate = new RestTemplate(new HttpComponentsClientHttpRequestFactory(httpClient));
       restTemplate.setErrorHandler(new OpenTmfResponseErrorHandler());
+      addResilienceInterceptor(restTemplate, clientId, properties);
       addFixedHeadersInterceptor(restTemplate, properties);
       addLogbookInterceptor(restTemplate, properties);
 

@@ -5,11 +5,14 @@ import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
 import java.util.Base64;
+import java.util.Set;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.opentmf.client.common.model.ClientProperties;
+import org.opentmf.client.common.resilience.ResilienceRegistries;
+import org.opentmf.client.rest.resilience.ResilienceClientHttpRequestInterceptor;
 import org.opentmf.client.rest.service.api.RestTemplateFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.util.CollectionUtils;
@@ -18,15 +21,19 @@ import org.springframework.web.client.RestTemplate;
 /**
  * Shared plumbing for the {@link RestTemplateFactory} implementations: mTLS
  * {@link SSLContext} construction from base64-encoded JKS material, the fixed-headers
- * interceptor (defaults only — per-request headers win), and optional Logbook wiring.
+ * interceptor (defaults only — per-request headers win), optional Logbook wiring, and optional
+ * resilience4j decoration.
  */
 @Slf4j
 abstract class AbstractRestTemplateFactory implements RestTemplateFactory {
 
   private final RestLogbookSupport logbookSupport;
+  private final ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider;
 
-  protected AbstractRestTemplateFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider) {
+  protected AbstractRestTemplateFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider,
+      ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider) {
     this.logbookSupport = logbookSupportProvider.getIfAvailable();
+    this.resilienceRegistriesProvider = resilienceRegistriesProvider;
   }
 
   protected SSLContext buildSslContext(ClientProperties properties)
@@ -59,6 +66,33 @@ abstract class AbstractRestTemplateFactory implements RestTemplateFactory {
     var sslContext = SSLContext.getInstance(properties.getSslProtocol());
     sslContext.init(kmf.getKeyManagers(), tmf != null ? tmf.getTrustManagers() : null, null);
     return sslContext;
+  }
+
+  /**
+   * Adds the resilience4j interceptor as the OUTERMOST interceptor when
+   * {@code resilience.enabled} is true. Must be invoked before the other interceptor-adding
+   * helpers so that the bulkhead and circuit breaker wrap the whole downstream chain. The
+   * {@code RestClient} built from the returned {@code RestTemplate} inherits the interceptor.
+   */
+  protected void addResilienceInterceptor(RestTemplate restTemplate, String clientId,
+      ClientProperties properties) {
+    var resilience = properties.getResilience();
+    if (!resilience.isEnabled()) {
+      return;
+    }
+    var registries = resilienceRegistriesProvider.getIfAvailable();
+    if (registries == null) {
+      throw new IllegalStateException("Client '" + clientId + "' has resilience.enabled: true, "
+          + "but resilience4j is not on the classpath. Add io.github.resilience4j:"
+          + "resilience4j-circuitbreaker and resilience4j-bulkhead, or disable resilience.");
+    }
+    var circuitBreaker = registries.circuitBreaker(clientId, resilience);
+    var bulkhead = registries.bulkhead(clientId, resilience);
+    restTemplate.getInterceptors().add(new ResilienceClientHttpRequestInterceptor(clientId,
+        circuitBreaker, bulkhead,
+        Set.copyOf(resilience.getCircuitBreaker().getRecordStatusCodes())));
+    log.debug("Resilience decoration enabled for client '{}' (bulkhead: {})", clientId,
+        bulkhead != null);
   }
 
   protected void addFixedHeadersInterceptor(RestTemplate restTemplate,

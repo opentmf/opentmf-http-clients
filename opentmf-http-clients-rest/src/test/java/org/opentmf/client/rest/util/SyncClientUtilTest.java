@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.opentmf.client.common.exception.OpenTmfClientNotFoundException;
+import org.opentmf.client.common.exception.OpenTmfClientResilienceException;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.HttpServerErrorException;
@@ -180,5 +181,19 @@ class SyncClientUtilTest {
   void emptyOn_returnsValue_onSuccess() {
     Optional<String> result = SyncClientUtil.emptyOn(() -> "ok", HttpStatus.NOT_FOUND);
     assertThat(result).contains("ok");
+  }
+
+  @Test
+  void executeWithRetry_neverRetriesResilienceRejections() {
+    var attempts = new AtomicInteger();
+    Supplier<String> rejected = () -> {
+      attempts.incrementAndGet();
+      throw new OpenTmfClientResilienceException("onedms", "circuit open", null);
+    };
+    var wait = Duration.ofMillis(1);
+
+    assertThatThrownBy(() -> SyncClientUtil.executeWithRetry(rejected, 3, wait))
+        .isInstanceOf(OpenTmfClientResilienceException.class);
+    assertThat(attempts).hasValue(1);
   }
 }

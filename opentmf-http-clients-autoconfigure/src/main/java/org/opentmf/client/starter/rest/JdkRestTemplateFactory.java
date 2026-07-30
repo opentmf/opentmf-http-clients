@@ -5,6 +5,7 @@ import java.net.ProxySelector;
 import java.net.http.HttpClient;
 import lombok.extern.slf4j.Slf4j;
 import org.opentmf.client.common.model.ClientProperties;
+import org.opentmf.client.common.resilience.ResilienceRegistries;
 import org.opentmf.client.rest.util.GzipClientHttpRequestInterceptor;
 import org.opentmf.client.rest.util.OpenTmfResponseErrorHandler;
 import org.springframework.beans.factory.ObjectProvider;
@@ -18,8 +19,9 @@ import org.springframework.web.util.DefaultUriBuilderFactory;
 @Slf4j
 public class JdkRestTemplateFactory extends AbstractRestTemplateFactory {
 
-  public JdkRestTemplateFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider) {
-    super(logbookSupportProvider);
+  public JdkRestTemplateFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider,
+      ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider) {
+    super(logbookSupportProvider, resilienceRegistriesProvider);
   }
 
   @Override
@@ -45,6 +47,7 @@ public class JdkRestTemplateFactory extends AbstractRestTemplateFactory {
       requestFactory.setReadTimeout(properties.getResponseTimeout());
       var restTemplate = new RestTemplate(requestFactory);
       restTemplate.setErrorHandler(new OpenTmfResponseErrorHandler());
+      addResilienceInterceptor(restTemplate, clientId, properties);
 
       if (properties.isCompressionEnabled()) {
         restTemplate.getInterceptors().add(GzipClientHttpRequestInterceptor.instance());
