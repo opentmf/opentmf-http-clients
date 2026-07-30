@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients) (v1x).
 For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-v1x) section in the README.
 
+## [2.1.4] — 2026-07-29
+
+### Added
+- Javadoc for every user-configurable property (`ClientProperties` and its nested types,
+  `BasicAuthConfig`, `BearerAuthConfig`, `OpentmfHttpClientsConfig`), including the per-client-type
+  behavioural differences (e.g. `request-timeout` is the TCP connect timeout on JDK/Netty but the
+  pool-lease timeout on Apache; `max-connections` and `connection-idle-timeout` are ignored by the
+  JDK client). The descriptions are exposed through Spring's configuration metadata
+  (`spring-configuration-metadata.json`) for the `opentmf.*` root properties and through the
+  published sources jar for the per-client map values, giving IDE auto-complete documentation when
+  editing `application.yml`.
+
+### Changed
+- Internal code-quality pass driven by SonarQube: all findings resolved, code duplication reduced
+  from 3.5% to 0% (shared `AbstractRestTemplateFactory` base class and `BearerTokenUtil` helpers),
+  deprecated Jackson 3 / Spring API usages replaced. No functional changes.
+- Build: the project now compiles on JDK 23+ (annotation processing enabled explicitly via
+  `maven-compiler-plugin` with `proc=full`), targets Java 17 bytecode via
+  `maven.compiler.release`, and offers an opt-in `sonar` profile for local SonarQube analysis.
+
 ## [2.1.3] — 2026-04-16
 
 ### Fixed

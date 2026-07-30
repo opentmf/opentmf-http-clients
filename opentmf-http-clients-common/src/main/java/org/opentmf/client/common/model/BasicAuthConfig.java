@@ -7,6 +7,9 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.springframework.validation.annotation.Validated;
 
+/**
+ * HTTP Basic authentication credentials, attached to every request of the owning client.
+ */
 @Validated
 @Getter
 @Setter
@@ -14,9 +17,15 @@ import org.springframework.validation.annotation.Validated;
 @AllArgsConstructor
 public class BasicAuthConfig {
 
+  /**
+   * User name for HTTP Basic authentication.
+   */
   @NotBlank
   private String username;
 
+  /**
+   * Password for HTTP Basic authentication.
+   */
   @NotBlank
   private String password;
 
