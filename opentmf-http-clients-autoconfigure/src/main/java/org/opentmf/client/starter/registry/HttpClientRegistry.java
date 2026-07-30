@@ -206,14 +206,13 @@ public class HttpClientRegistry implements DisposableBean {
     }
     var tokenService = reactiveRegistrar.createTokenService(name, properties, tokenWebClient);
     var managed = new ManagedReactiveClient(webClient, tokenService);
-    var tokenProviderToClose = tokenConnectionProvider;
-    Runnable closer = () -> {
-      connectionProvider.disposeLater().subscribe();
-      if (tokenProviderToClose != null) {
-        tokenProviderToClose.disposeLater().subscribe();
-      }
-    };
-    return new Entry(ClientType.NETTY, managed, closer);
+    // The closer MUST NOT be a lambda declared in this class: a lambda capturing
+    // ConnectionProvider compiles to a synthetic method of THIS class whose descriptor
+    // references reactor-netty — and reactor-netty is optional, so getDeclaredMethods()
+    // (Spring bean introspection) would NoClassDefFoundError on every non-reactive
+    // classpath. ReactiveEntryCloser keeps the lambda in its own, lazily-loaded class file.
+    return new Entry(ClientType.NETTY, managed,
+        ReactiveEntryCloser.of(connectionProvider, tokenConnectionProvider));
   }
 
   private ManagedSyncClient syncClient(String name, Entry entry) {

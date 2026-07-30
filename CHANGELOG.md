@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients) (v1x).
 For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-v1x) section in the README.
 
+## [2.1.5] - 2026-07-30
+
+### Fixed
+- **`HttpClientRegistry` broke sync-only application contexts.** The reactive close action was an
+  inline lambda capturing `ConnectionProvider`, which compiled to a synthetic method of the
+  registry class whose signature references reactor-netty — an optional dependency. On any
+  classpath without reactor-netty, Spring's bean introspection (`getDeclaredMethods()`) threw
+  `NoClassDefFoundError` and the whole ApplicationContext failed to start. The close action now
+  lives in its own lazily-loaded class, and a bytecode-level regression test asserts that no
+  registry method signature references an optional-dependency package.
+
 ## [2.1.4] — 2026-07-29
 
 ### Added
