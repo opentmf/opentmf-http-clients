@@ -301,6 +301,11 @@
               <goal>report</goal>
             </goals>
             <id>report</id>
+            <!-- post-integration-test, not the default verify: the sonar profile's scan runs in
+                 the last module's verify phase and would otherwise precede that module's report.
+                 It must not be earlier (e.g. prepare-package) either, or failsafe IT coverage
+                 would be missing from the XML. -->
+            <phase>post-integration-test</phase>
           </execution>
           <execution>
             <configuration>
@@ -369,24 +374,14 @@
         <sonar.host.url>http://localhost:9000</sonar.host.url>
         <sonar.projectKey>org.opentmf.client:opentmf-http-clients</sonar.projectKey>
         <sonar.qualitygate.wait>true</sonar.qualitygate.wait>
+        <!-- Mirrors the jacoco check exclusion so both gates measure the same set. -->
+        <sonar.coverage.exclusions>**/*Application.java</sonar.coverage.exclusions>
         <!--
-          Multi-module Jacoco coverage merge: `sonar.coverage.jacoco.xmlReportPaths`
-          takes a comma-separated list of report files, and Sonar unions their
-          coverage before attributing to source classes. Without this, each
-          module's report only credits its OWN tests — most coverage of the
-          factory/registrar code in `-autoconfigure` comes from ITs in
-          `-tests`, so per-module reports alone would show those classes as
-          uncovered and drag the Quality Gate down. The path list below covers
-          every module that generates a report.
+          No sonar.coverage.jacoco.xmlReportPaths here on purpose: Sonar
+          auto-discovers each module's own target/site/jacoco/jacoco.xml, so
+          coverage attribution stays per-module. A union list would let a
+          cross-module IT lift another module's coverage and mask shortfalls.
         -->
-        <sonar.coverage.jacoco.xmlReportPaths>
-          ${maven.multiModuleProjectDirectory}/opentmf-http-clients-common/target/site/jacoco/jacoco.xml,
-          ${maven.multiModuleProjectDirectory}/opentmf-http-clients-rest/target/site/jacoco/jacoco.xml,
-          ${maven.multiModuleProjectDirectory}/opentmf-http-clients-reactive/target/site/jacoco/jacoco.xml,
-          ${maven.multiModuleProjectDirectory}/opentmf-http-clients-bearer-provider/target/site/jacoco/jacoco.xml,
-          ${maven.multiModuleProjectDirectory}/opentmf-http-clients-autoconfigure/target/site/jacoco/jacoco.xml,
-          ${maven.multiModuleProjectDirectory}/opentmf-http-clients-tests/target/site/jacoco/jacoco.xml
-        </sonar.coverage.jacoco.xmlReportPaths>
       </properties>
       <build>
         <plugins>
