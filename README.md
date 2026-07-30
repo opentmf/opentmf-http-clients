@@ -230,6 +230,18 @@ opentmf:
         trust-store:
           password: mypassword
           base64-jks: <BASE64_JKS_CONTENT>
+      resilience:                       # optional — requires resilience4j jars, see "Resilience"
+        enabled: true
+        circuit-breaker:
+          failure-rate-threshold: 50
+          sliding-window-size: 50
+          minimum-number-of-calls: 20
+          wait-duration-in-open-state: 30s
+          record-status-codes: [500, 502, 503, 504]
+        bulkhead:
+          max-concurrent-calls: 25
+        time-limiter:                   # netty clients only
+          timeout-duration: 10s
 ```
 
 ### Basic Auth Client (Minimal)
@@ -352,6 +364,19 @@ For each entry in the `http-clients` map with key `clientId`, the registered bea
 Both a `RestClient` and a `RestTemplate` bean are registered for each REST client. The `RestClient` is the recommended choice for new code — it provides a modern fluent API, works naturally with virtual threads (Java 21+), and is the official replacement for `RestTemplate` in Spring Framework 7+.
 
 A single client produces **either** reactive beans **or** REST beans, never both. If you need both a `WebClient` and a `RestClient` for the same backend, declare two clients with different IDs (e.g. one with `client-type: netty` and one with `client-type: jdk`).
+
+### Application-scoped beans
+
+Independent of the per-client beans, the starter registers these singletons:
+
+| Bean Name | Type | Condition |
+|---|---|---|
+| `opentmfHttpClientRegistry` | `HttpClientRegistry` | always — see [Dynamic clients](#dynamic-clients-httpclientregistry) |
+| `opentmfResilienceRegistries` | `ResilienceRegistries` | resilience4j on the classpath — see [Resilience](#resilience-circuit-breaker--bulkhead) |
+| `opentmfResilienceMetricsBinder` | `ResilienceMetricsBinder` | resilience4j-micrometer + a `MeterRegistry` bean |
+| `opentmfApachePoolMeters` | `ApachePoolMeters` | Apache HttpClient 5 + Micrometer + a `MeterRegistry` bean |
+
+You normally only autowire `HttpClientRegistry` (for dynamic clients); the others work behind the scenes — `ResilienceRegistries` is useful in tests or when you need direct access to a client's `CircuitBreaker`/`Bulkhead` instances.
 
 ### Autowiring beans
 
