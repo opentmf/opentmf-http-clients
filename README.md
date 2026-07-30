@@ -748,6 +748,47 @@ opentmf:
 - **Rejected calls** (open circuit, full bulkhead) throw `OpenTmfClientResilienceException` — *not* part of the `OpenTmfClientResponseException` hierarchy, so the retry utilities never retry them: an open circuit means "stop calling". Map it to `503 Service Unavailable` in your error advice if you expose the failure upstream.
 - **Metrics:** with a `MeterRegistry` bean and `resilience4j-micrometer` present, `resilience4j.circuitbreaker.*` and `resilience4j.bulkhead.*` meters (tagged `name=<clientId>`) appear on the standard scrape automatically.
 
+## Dynamic clients (`HttpClientRegistry`)
+
+The static `opentmf.http-clients.*` clients are create-once Spring beans — the right lifecycle for a fixed set of dependencies, the wrong one for clients built **programmatically at runtime** (e.g. from catalog rows that SREs change without a redeploy). For those, autowire the `HttpClientRegistry` bean:
+
+```java
+@Autowired HttpClientRegistry registry;
+
+// build (or fetch) a client for a source row
+var client = registry.getOrCreate("onedms", ClientType.APACHE, props);
+client.restClient().get().uri("/things").retrieve().body(String.class);
+client.tokenService().getToken();          // matches the row's auth config
+
+// the row changed → hot-swap; the old client closes after a 30s grace period
+registry.replace("onedms", ClientType.APACHE, newProps);
+
+// the row was deleted
+registry.evict("onedms");
+
+// reactive sources
+var reactive = registry.getOrCreateReactive("asgw", props);
+reactive.webClient(); reactive.tokenService();
+```
+
+Semantics:
+
+- **Grace-period close** — `replace`/`evict` never yank a client out from under in-flight requests: the retired client closes 30 seconds later. Closing is per-type: Apache closes its pooled connection manager gracefully; JDK uses a guarded `AutoCloseable` close (real close on Java 21+ runtimes, GC-reclaimed no-op on 17); Netty disposes the client's (and its token client's) `ConnectionProvider` gracefully.
+- **Resilience reset** — `replace`/`evict` also reset the name's resilience4j instances, so a re-created client starts with breaker state and configuration built from its current properties.
+- **Pool gauges** — with a `MeterRegistry` bean, every Apache client (static or dynamic) exposes `opentmf.client.pool.leased|available|pending|max{client=<name>}`; `evict` removes the gauges.
+- Prefer `client-type: apache` for dynamic sources: real pool control and pool metrics. On the JDK type, `max-connections` is unenforceable (see below).
+
+### Validating a configuration (`ClientPropertiesValidator`)
+
+For "test connection" flows and health checks, validate a programmatically built configuration without side effects — all findings are returned at once, suitable for a UI checklist:
+
+```java
+List<ClientPropertiesValidator.Finding> findings =
+    ClientPropertiesValidator.validate(ClientType.APACHE, props);
+```
+
+Checks include per-auth-mode required fields, base64-decodability of mTLS material, sane timeouts, proxy settings, resilience ranges — and flags **`max-connections` on the JDK client type**, which has no pool-size API: use `client-type: apache`, or enforce the concurrency contract with `resilience.bulkhead.max-concurrent-calls`.
+
 ## Migration from v1.x
 
 This project replaces `opentmf-web-clients` (v1.x). The key changes are:

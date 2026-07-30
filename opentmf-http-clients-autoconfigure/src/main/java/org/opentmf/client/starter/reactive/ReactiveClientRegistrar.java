@@ -5,6 +5,7 @@ import static org.opentmf.client.common.util.TokenUtil.WEB_CLIENT;
 
 import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.opentmf.client.bearer.reactive.BearerTokenClientImpl;
 import org.opentmf.client.bearer.reactive.BearerTokenServiceImpl;
 import org.opentmf.client.bearer.reactive.BearerTokenServiceMockImpl;
@@ -24,6 +25,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.netty.Connection;
+import reactor.netty.resources.ConnectionProvider;
 
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnClass(WebClient.class)
@@ -52,23 +54,33 @@ public class ReactiveClientRegistrar {
           + "Add org.zalando:logbook-netty to your classpath to enable HTTP logging.", clientId);
     }
     registerIfAbsent(clientId + WEB_CLIENT, buildWebClient(clientId, clientId, properties));
-    registerIfAbsent(clientId + TOKEN_SERVICE, buildTokenService(clientId, properties));
+    registerIfAbsent(clientId + TOKEN_SERVICE, createTokenService(clientId, properties, null));
+  }
+
+  private WebClient buildWebClient(String connectionName, String resilienceName,
+      ClientProperties properties) {
+    return createWebClient(connectionName, resilienceName, properties,
+        WebClientConfigUtil.buildConnectionProvider(connectionName, properties));
   }
 
   /**
-   * Builds a WebClient. The {@code resilienceName} deliberately differs from
-   * {@code connectionName} for token clients: the token WebClient gets its own connection pool
-   * ({@code <id>Token}) but shares the OWNING client's resilience instances, so a broken token
-   * endpoint opens the same circuit.
+   * Builds a fully configured {@code WebClient} without registering any bean — the entry point
+   * for lifecycle-managing callers such as the dynamic-client registry, which supply their own
+   * {@link ConnectionProvider} so they can dispose it on eviction.
+   *
+   * <p>The {@code resilienceName} deliberately differs from {@code connectionName} for token
+   * clients: the token WebClient gets its own connection pool ({@code <id>Token}) but shares the
+   * OWNING client's resilience instances, so a broken token endpoint opens the same circuit.</p>
    */
-  private WebClient buildWebClient(String connectionName, String resilienceName,
-      ClientProperties properties) {
+  public WebClient createWebClient(String connectionName, String resilienceName,
+      ClientProperties properties, ConnectionProvider connectionProvider) {
     try {
       Consumer<Connection> logbookHandler =
           (properties.isLoggingEnabled() && logbookSupport != null)
               ? logbookSupport::addHandler
               : null;
-      var httpClient = WebClientConfigUtil.httpClient(logbookHandler, connectionName, properties);
+      var httpClient = WebClientConfigUtil.httpClient(
+          logbookHandler, properties, connectionProvider);
       var webClient = WebClientConfigUtil.createWebClient(webClientBuilder, httpClient, properties);
       return ReactiveResilience.decorate(webClient, resilienceName, properties,
           resilienceRegistriesProvider.getIfAvailable());
@@ -77,20 +89,30 @@ public class ReactiveClientRegistrar {
     }
   }
 
-  private TokenService buildTokenService(String clientId, ClientProperties properties) {
+  /**
+   * Builds the token service matching the client's auth configuration. For bearer auth,
+   * {@code tokenWebClient} may be supplied by lifecycle-managing callers (so they own its
+   * connection provider); when {@code null}, a token WebClient named {@code <clientId>Token} is
+   * built internally, sharing the owning client's resilience instances.
+   */
+  public TokenService createTokenService(String clientId, ClientProperties properties,
+      @Nullable WebClient tokenWebClient) {
     return switch (properties.getAuthType()) {
       case NONE -> new NoOpTokenService();
       case BASIC -> new BasicTokenServiceImpl(properties.getBasicAuth());
-      case BEARER -> buildBearerTokenService(clientId, properties);
+      case BEARER -> buildBearerTokenService(clientId, properties, tokenWebClient);
     };
   }
 
-  private TokenService buildBearerTokenService(String clientId, ClientProperties properties) {
+  private TokenService buildBearerTokenService(String clientId, ClientProperties properties,
+      @Nullable WebClient suppliedTokenWebClient) {
     var bearerConfig = properties.getBearerAuth();
     if (bearerConfig.isUseMock()) {
       return new BearerTokenServiceMockImpl();
     }
-    var tokenWebClient = buildWebClient(clientId + "Token", clientId, properties);
+    var tokenWebClient = suppliedTokenWebClient != null
+        ? suppliedTokenWebClient
+        : buildWebClient(clientId + "Token", clientId, properties);
     var tokenClient = new BearerTokenClientImpl(properties, bearerConfig, tokenWebClient);
     var cache = TokenCacheUtil.buildTokenCache();
     return new BearerTokenServiceImpl(bearerConfig, cache, tokenClient);

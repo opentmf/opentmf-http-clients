@@ -1,5 +1,16 @@
 # TODO — dnms-enrich dynamic-source integration
 
+> **Status 2026-07-30: ALL FOUR ITEMS IMPLEMENTED** (opentmf-http-clients 2.1.4-SNAPSHOT).
+> #1 → `HttpClientRegistry` (getOrCreate/replace/evict + reactive variants, 30s grace-period
+> close, per-type close semantics as decided below, resilience reset on swap).
+> #2 → `ClientPropertiesValidator.validate(type, props)` — all findings, side-effect-free.
+> #3 → `opentmf.client.pool.*{client=<name>}` gauges for Apache clients (auto-registered,
+> removed on evict).
+> #4 → resolved via the validator finding: JDK + max-connections without a resilience bulkhead
+> is flagged, pointing to `client-type: apache` or `resilience.bulkhead.max-concurrent-calls`
+> (the resilience4j integration landed in the same release, so the semaphore option exists
+> as the bulkhead).
+
 Gaps identified while designing dnms-enrich's dynamic enrichment-source
 client management (DNMS / dnotify-analysis, 2026-07-10). Context: dnms-enrich
 builds HTTP clients **programmatically at runtime** from catalog rows

@@ -28,6 +28,7 @@ import org.mockserver.integration.ClientAndServer;
 import org.mockserver.matchers.Times;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.resilience.ResilienceRegistries;
+import org.opentmf.client.starter.ApachePoolMeters;
 import org.springframework.beans.factory.ObjectProvider;
 import org.zalando.logbook.Logbook;
 import org.zalando.logbook.spring.LogbookClientHttpRequestInterceptor;
@@ -45,7 +46,11 @@ class ApacheRestTemplateFactoryTest {
     @Override public ResilienceRegistries getObject() { return null; }
     @Override public ResilienceRegistries getIfAvailable() { return null; }
   };
-  private final ApacheRestTemplateFactory factory = new ApacheRestTemplateFactory(SUPPORT_PROVIDER, NO_RESILIENCE);
+  private static final ObjectProvider<ApachePoolMeters> NO_POOL_METERS = new ObjectProvider<>() {
+    @Override public ApachePoolMeters getObject() { return null; }
+    @Override public ApachePoolMeters getIfAvailable() { return null; }
+  };
+  private final ApacheRestTemplateFactory factory = new ApacheRestTemplateFactory(SUPPORT_PROVIDER, NO_RESILIENCE, NO_POOL_METERS);
 
   @BeforeAll
   static void startServer() {
@@ -170,7 +175,7 @@ class ApacheRestTemplateFactoryTest {
       @Override public RestLogbookSupport getObject() { return null; }
       @Override public RestLogbookSupport getIfAvailable() { return null; }
     };
-    var localFactory = new ApacheRestTemplateFactory(emptyProvider, NO_RESILIENCE);
+    var localFactory = new ApacheRestTemplateFactory(emptyProvider, NO_RESILIENCE, NO_POOL_METERS);
     var props = new ClientProperties();
     props.setLoggingEnabled(true);
     var restTemplate = localFactory.create("noBean", props);

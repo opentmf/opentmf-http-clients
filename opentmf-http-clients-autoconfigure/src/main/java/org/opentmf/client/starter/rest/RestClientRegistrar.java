@@ -44,6 +44,23 @@ public class RestClientRegistrar {
   }
 
   public void registerBeans(String clientId, ClientType clientType, ClientProperties properties) {
+    var restTemplate = createRestTemplate(clientId, clientType, properties);
+    var restClient = createRestClient(restTemplate);
+    registerIfAbsent(clientId + REST_TEMPLATE, restTemplate);
+    registerIfAbsent(clientId + REST_CLIENT, restClient);
+    registerIfAbsent(clientId + TOKEN_SERVICE,
+        createTokenService(restClient, properties));
+  }
+
+  /**
+   * Builds a fully configured {@code RestTemplate} for the given client type without registering
+   * any bean — the entry point for lifecycle-managing callers such as the dynamic-client
+   * registry.
+   *
+   * @throws IllegalStateException when no factory for the client type is on the classpath
+   */
+  public RestTemplate createRestTemplate(String clientId, ClientType clientType,
+      ClientProperties properties) {
     RestTemplateFactory rtFactory = restTemplateFactories.get(clientType);
     if (rtFactory == null) {
       var msg = "Client '" + clientId + "' requires client-type: " + clientType
@@ -55,22 +72,25 @@ public class RestClientRegistrar {
       log.error(msg);
       throw new IllegalStateException(msg);
     }
-    var restTemplate = rtFactory.create(clientId, properties);
-    var restClient = buildRestClient(restTemplate);
-    registerIfAbsent(clientId + REST_TEMPLATE, restTemplate);
-    registerIfAbsent(clientId + REST_CLIENT, restClient);
-    registerIfAbsent(clientId + TOKEN_SERVICE,
-        buildSyncTokenService(restClient, properties));
+    return rtFactory.create(clientId, properties);
   }
 
-  private RestClient buildRestClient(RestTemplate restTemplate) {
+  /**
+   * Builds the {@code RestClient} view of the given {@code RestTemplate}, inheriting its request
+   * factory and interceptors and adding the library's error-wrapping status handler.
+   */
+  public RestClient createRestClient(RestTemplate restTemplate) {
     return RestClient.builder(restTemplate)
         .defaultStatusHandler(HttpStatusCode::isError,
             OpenTmfRestClientStatusHandler.errorHandler())
         .build();
   }
 
-  private SyncTokenService buildSyncTokenService(RestClient restClient,
+  /**
+   * Builds the token service matching the client's auth configuration. Token calls run through
+   * the given {@code RestClient}, so they share its decoration (incl. resilience).
+   */
+  public SyncTokenService createTokenService(RestClient restClient,
       ClientProperties properties) {
     return switch (properties.getAuthType()) {
       case NONE -> new NoOpSyncTokenService();

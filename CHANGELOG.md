@@ -8,6 +8,19 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
 ## [2.1.4] — 2026-07-29
 
 ### Added
+- **`HttpClientRegistry`** — a registry-style lifecycle API for clients built programmatically at
+  runtime (`getOrCreate` / `replace` / `evict`, plus reactive variants), complementing the
+  create-once static beans. Retired clients close only after a 30s grace period so in-flight
+  requests finish; closing is per-type (Apache: graceful pool close; JDK: guarded
+  `AutoCloseable` close, effective on Java 21+ runtimes; Netty: graceful `ConnectionProvider`
+  disposal, token client included). Replacing or evicting a name also resets its resilience4j
+  instances.
+- **`ClientPropertiesValidator`** — public, side-effect-free validation of a (programmatically
+  built) client configuration returning ALL findings at once, for SRE "test connection"
+  checklists. Flags, among others, `max-connections` on the JDK client type, where it is
+  unenforceable — use `client-type: apache` or `resilience.bulkhead.max-concurrent-calls`.
+- **Apache connection-pool gauges** — with a `MeterRegistry` bean, every Apache-backed client
+  exposes `opentmf.client.pool.leased|available|pending|max{client=<name>}`.
 - **Optional resilience4j integration** — per-client, config-driven circuit breaker, bulkhead and
   (reactive-only) time limiter under `opentmf.http-clients.<id>.resilience.*`. Off by default and
   classpath-gated: without the resilience4j jars or without `resilience.enabled: true`, behavior

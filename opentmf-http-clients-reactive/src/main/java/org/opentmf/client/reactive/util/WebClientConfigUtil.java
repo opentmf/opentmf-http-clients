@@ -51,8 +51,21 @@ public final class WebClientConfigUtil {
       @Nullable Consumer<Connection> logbookHandler,
       String clientId,
       ClientProperties clientProperties) throws SSLException {
+    return httpClient(logbookHandler, clientProperties,
+        buildConnectionProvider(clientId, clientProperties));
+  }
+
+  /**
+   * Variant taking an externally-built {@link ConnectionProvider} (which already carries the
+   * client name), for callers that manage the client lifecycle and must keep the provider handle
+   * to dispose it later (dynamic clients).
+   */
+  public static HttpClient httpClient(
+      @Nullable Consumer<Connection> logbookHandler,
+      ClientProperties clientProperties,
+      ConnectionProvider connectionProvider) throws SSLException {
     var sslContext = buildSslContext(clientProperties);
-    var httpClient = httpClient(logbookHandler, sslContext, clientId, clientProperties);
+    var httpClient = httpClient(logbookHandler, sslContext, connectionProvider, clientProperties);
 
     if (clientProperties.getProxyConfig() != null) {
       httpClient = httpClient.proxy(typeSpec -> proxy(typeSpec, clientProperties));
@@ -63,9 +76,8 @@ public final class WebClientConfigUtil {
   private static HttpClient httpClient(
       @Nullable Consumer<Connection> logbookHandler,
       SslContext sslContext,
-      String clientId,
+      ConnectionProvider connectionProvider,
       ClientProperties clientProperties) {
-    var connectionProvider = buildConnectionProvider(clientId, clientProperties);
     var client = HttpClient.create(connectionProvider)
         .wiretap(HttpClient.class.getName(), LogLevel.INFO, AdvancedByteBufFormat.SIMPLE)
         .compress(clientProperties.isCompressionEnabled())
@@ -191,7 +203,11 @@ public final class WebClientConfigUtil {
     }
   }
 
-  private static ConnectionProvider buildConnectionProvider(
+  /**
+   * Builds the named connection provider for a client. Public so lifecycle-managing callers
+   * (e.g. the dynamic-client registry) can keep the handle and dispose it on eviction.
+   */
+  public static ConnectionProvider buildConnectionProvider(
       String clientId, ClientProperties clientProperties) {
     var builder = ConnectionProvider.builder(clientId)
         .maxIdleTime(clientProperties.getConnectionIdleTimeout())

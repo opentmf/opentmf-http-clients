@@ -52,6 +52,16 @@ public class ResilienceRegistries {
         .build());
   }
 
+  /**
+   * Removes the named CircuitBreaker and Bulkhead so a later request re-creates them from fresh
+   * properties. Called by the dynamic-client registry on replace/evict — without this, a
+   * hot-swapped client would keep running against its predecessor's resilience configuration.
+   */
+  public void remove(String name) {
+    circuitBreakerRegistry.remove(name);
+    bulkheadRegistry.remove(name);
+  }
+
   private static CircuitBreakerConfig buildCircuitBreakerConfig(
       ResilienceProperties.CircuitBreakerProperties props) {
     Set<Integer> recordedStatusCodes = Set.copyOf(props.getRecordStatusCodes());

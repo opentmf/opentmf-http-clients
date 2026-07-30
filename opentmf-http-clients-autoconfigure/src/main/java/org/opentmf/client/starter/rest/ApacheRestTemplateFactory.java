@@ -15,6 +15,7 @@ import org.apache.hc.core5.util.Timeout;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.resilience.ResilienceRegistries;
 import org.opentmf.client.rest.util.OpenTmfResponseErrorHandler;
+import org.opentmf.client.starter.ApachePoolMeters;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Configuration;
@@ -28,9 +29,13 @@ import org.springframework.web.util.DefaultUriBuilderFactory;
 @Slf4j
 public class ApacheRestTemplateFactory extends AbstractRestTemplateFactory {
 
+  private final ApachePoolMeters poolMeters;
+
   public ApacheRestTemplateFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider,
-      ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider) {
+      ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider,
+      ObjectProvider<ApachePoolMeters> poolMetersProvider) {
     super(logbookSupportProvider, resilienceRegistriesProvider);
+    this.poolMeters = poolMetersProvider.getIfAvailable();
   }
 
   @Override
@@ -59,6 +64,10 @@ public class ApacheRestTemplateFactory extends AbstractRestTemplateFactory {
           .setDefaultSocketConfig(socketConfig)
           .setDefaultConnectionConfig(connectionConfig)
           .build();
+
+      if (poolMeters != null) {
+        poolMeters.register(clientId, connManager);
+      }
 
       var requestConfig = RequestConfig.custom()
           .setConnectionRequestTimeout(Timeout.ofMilliseconds(

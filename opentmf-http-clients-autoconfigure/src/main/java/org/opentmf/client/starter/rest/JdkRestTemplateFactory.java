@@ -10,7 +10,6 @@ import org.opentmf.client.rest.util.GzipClientHttpRequestInterceptor;
 import org.opentmf.client.rest.util.OpenTmfResponseErrorHandler;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.DefaultUriBuilderFactory;
@@ -43,7 +42,7 @@ public class JdkRestTemplateFactory extends AbstractRestTemplateFactory {
             new InetSocketAddress(proxyConfig.getProxyHost(), proxyConfig.getProxyPort())));
       }
 
-      var requestFactory = new JdkClientHttpRequestFactory(builder.build());
+      var requestFactory = new CloseableJdkClientHttpRequestFactory(builder.build());
       requestFactory.setReadTimeout(properties.getResponseTimeout());
       var restTemplate = new RestTemplate(requestFactory);
       restTemplate.setErrorHandler(new OpenTmfResponseErrorHandler());
