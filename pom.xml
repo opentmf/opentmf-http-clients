@@ -4,7 +4,7 @@
   <groupId>org.opentmf.client</groupId>
   <artifactId>opentmf-http-clients</artifactId>
   <name>opentmf-http-clients</name>
-  <version>2.1.5-SNAPSHOT</version>
+  <version>2.1.5</version>
 
   <packaging>pom</packaging>
   <modules>
@@ -469,7 +469,7 @@
     <url>https://github.com/opentmf/opentmf-http-clients</url>
     <connection>scm:git:git@github.com:opentmf/opentmf-http-clients.git</connection>
     <developerConnection>scm:git:git@github.com:opentmf/opentmf-http-clients.git</developerConnection>
-    <tag>HEAD</tag>
+    <tag>opentmf-http-clients-2.1.5</tag>
   </scm>
 
 </project>
