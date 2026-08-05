@@ -56,6 +56,6 @@ public class BearerTokenClientImpl implements BearerTokenClient {
         .map(body -> (ObjectNode) JacksonUtil.jsonToTree(body))
         .retryWhen(
             WebClientUtil.retry(properties.getNumRetries(),
-                properties.getRetryWaitDuration()));
+                properties.getRetryWaitDuration(), 0.0d, properties.getMaxRetryAfter()));
   }
 }

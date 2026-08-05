@@ -8,6 +8,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.opentmf.client.common.exception.OpenTmfClientNotFoundException;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.client.common.util.HttpClientUtil;
@@ -26,6 +27,15 @@ import org.springframework.web.client.RestClientResponseException;
 public final class SyncClientUtil {
 
   private static final double DEFAULT_JITTER_FACTOR = 0.0d;
+
+  /**
+   * Default bound on a server-requested {@code Retry-After}, matching
+   * {@code ClientProperties.maxRetryAfter}. Used by the overloads that do not take one, so a
+   * caller who never configures it is still protected from an unbounded wait.
+   */
+  public static final Duration DEFAULT_MAX_RETRY_AFTER = Duration.ofSeconds(30);
+
+  private static final long MAX_BACKOFF_SHIFT = 20L;
 
   private SyncClientUtil() {
   }
@@ -63,6 +73,25 @@ public final class SyncClientUtil {
    */
   public static <T> T executeWithRetry(Supplier<T> action, long maxAttempts,
       Duration waitDuration, double jitterFactor) {
+    return executeWithRetry(action, maxAttempts, waitDuration, jitterFactor,
+        DEFAULT_MAX_RETRY_AFTER);
+  }
+
+  /**
+   * Executes the given action with exponential backoff retry, honouring a server's
+   * {@code Retry-After} within the given bound.
+   *
+   * <p>The server controls <em>when</em>; the caller controls <em>how many</em> and <em>at most
+   * how long</em>. {@code Retry-After} never changes {@code maxAttempts}, and acts as a floor on
+   * the computed backoff — it may only ask this client to be more patient, never less. A request
+   * to wait longer than {@code maxRetryAfter} is refused outright rather than clamped: retrying
+   * early against a server that asked for room just earns another rejection.</p>
+   *
+   * @param maxRetryAfter longest server-requested delay to honour; beyond it the call fails
+   *                      immediately instead of waiting
+   */
+  public static <T> T executeWithRetry(Supplier<T> action, long maxAttempts,
+      Duration waitDuration, double jitterFactor, Duration maxRetryAfter) {
     long baseMs = waitDuration.toMillis();
     for (long attempt = 0; ; attempt++) {
       try {
@@ -71,8 +100,19 @@ public final class SyncClientUtil {
         if (attempt >= maxAttempts || !shouldRetryOn(e)) {
           throw e;
         }
-        long backoffMs = baseMs * (1L << attempt);
+        // Shift is bounded: 1L << 63 is undefined, and anything beyond ~20 already exceeds
+        // any sane wait.
+        long backoffMs = baseMs * (1L << Math.min(attempt, MAX_BACKOFF_SHIFT));
         long sleepMs = applyJitter(backoffMs, jitterFactor);
+        Duration retryAfter = retryAfterOf(e);
+        if (retryAfter != null) {
+          if (retryAfter.compareTo(maxRetryAfter) > 0) {
+            log.warn("Not retrying: server asked for {} but max-retry-after is {}.",
+                retryAfter, maxRetryAfter);
+            throw e;
+          }
+          sleepMs = Math.max(sleepMs, retryAfter.toMillis());
+        }
         log.warn("Will retry. [Retry count: {}][Retry LocalTime: {}]", attempt + 1,
             LocalTime.now());
         sleep(sleepMs);
@@ -83,6 +123,13 @@ public final class SyncClientUtil {
   public static <T> T executeWithRetry(Supplier<T> action, long maxAttempts,
       Duration waitDuration) {
     return executeWithRetry(action, maxAttempts, waitDuration, DEFAULT_JITTER_FACTOR);
+  }
+
+  /**
+   * The server's {@code Retry-After} carried by the exception, or {@code null} when none applies.
+   */
+  private static @Nullable Duration retryAfterOf(Throwable throwable) {
+    return throwable instanceof OpenTmfClientResponseException e ? e.getRetryAfter() : null;
   }
 
   /**

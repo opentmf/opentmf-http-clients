@@ -97,6 +97,7 @@ public class ClientPropertiesValidator {
     requirePositive(properties.getResponseTimeout(), "response-timeout", findings);
     requirePositive(properties.getConnectionIdleTimeout(), "connection-idle-timeout", findings);
     requirePositive(properties.getRetryWaitDuration(), "retry-wait-duration", findings);
+    requirePositive(properties.getMaxRetryAfter(), "max-retry-after", findings);
     if (properties.getNumRetries() < 0) {
       findings.add(new Finding("num-retries", "must be zero or positive"));
     }

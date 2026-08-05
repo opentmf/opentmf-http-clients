@@ -75,3 +75,14 @@ opentmf:
           sliding-window-size: 4
           minimum-number-of-calls: 4
           wait-duration-in-open-state: 60s
+
+    apacheRetry:
+      client-type: apache
+
+    syncRetryAfter:
+      client-type: jdk
+      max-retry-after: 2s
+
+    reactiveRetryAfter:
+      client-type: netty
+      max-retry-after: 2s

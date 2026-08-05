@@ -22,6 +22,13 @@ public final class WebClientUtil {
 
   private static final double DEFAULT_JITTER_FACTOR = 0.0d;
 
+  /**
+   * Default bound on a server-requested {@code Retry-After}, matching
+   * {@code ClientProperties.maxRetryAfter}. Used by the overloads that do not take one, so a
+   * caller who never configures it is still protected from an unbounded wait.
+   */
+  public static final Duration DEFAULT_MAX_RETRY_AFTER = Duration.ofSeconds(30);
+
   private WebClientUtil() {
   }
 
@@ -48,8 +55,31 @@ public final class WebClientUtil {
   }
 
   public static RetryBackoffSpec retry(long maxAttempts, Duration duration, double jitterFactor) {
+    return retry(maxAttempts, duration, jitterFactor, DEFAULT_MAX_RETRY_AFTER);
+  }
+
+  /**
+   * Exponential-backoff retry that additionally honours a server's {@code Retry-After} within the
+   * given bound.
+   *
+   * <p>The server controls <em>when</em>; the caller controls <em>how many</em> and <em>at most
+   * how long</em>. {@code Retry-After} never changes {@code maxAttempts}, and a request to wait
+   * longer than {@code maxRetryAfter} is refused outright rather than clamped.</p>
+   *
+   * <p>The requested delay is applied <em>in addition to</em> the spec's own backoff rather than
+   * as {@code max(backoff, retryAfter)}. That is deliberate: it keeps the whole
+   * {@link RetryBackoffSpec} contract — jitter, attempt counting, exhaustion — intact instead of
+   * hand-rolling a retry loop, and erring towards waiting slightly longer is safe for a client
+   * honouring a throttle. It is never more aggressive than the backoff alone.</p>
+   *
+   * @param maxRetryAfter longest server-requested delay to honour; beyond it the sequence fails
+   *                      immediately instead of waiting
+   */
+  public static RetryBackoffSpec retry(long maxAttempts, Duration duration, double jitterFactor,
+      Duration maxRetryAfter) {
     return Retry.backoff(maxAttempts, duration)
         .jitter(jitterFactor)
+        .doBeforeRetryAsync(retrySignal -> retryAfterDelay(retrySignal.failure(), maxRetryAfter))
         .doAfterRetry(retrySignal -> log.warn("Will retry. [Retry count: {}][Retry LocalTime: {}]",
             retrySignal.totalRetries(), LocalTime.now()))
         .filter(WebClientUtil::shouldRetryOn)
@@ -58,6 +88,24 @@ public final class WebClientUtil {
 
   public static RetryBackoffSpec retry(long maxAttempts, Duration duration) {
     return retry(maxAttempts, duration, DEFAULT_JITTER_FACTOR);
+  }
+
+  /**
+   * The extra wait a server's {@code Retry-After} asks for, or an error when it exceeds the bound.
+   */
+  private static Mono<Void> retryAfterDelay(Throwable failure, Duration maxRetryAfter) {
+    Duration retryAfter = failure instanceof OpenTmfClientResponseException e
+        ? e.getRetryAfter()
+        : null;
+    if (retryAfter == null) {
+      return Mono.empty();
+    }
+    if (retryAfter.compareTo(maxRetryAfter) > 0) {
+      log.warn("Not retrying: server asked for {} but max-retry-after is {}.",
+          retryAfter, maxRetryAfter);
+      return Mono.error(failure);
+    }
+    return Mono.delay(retryAfter).then();
   }
 
   /**

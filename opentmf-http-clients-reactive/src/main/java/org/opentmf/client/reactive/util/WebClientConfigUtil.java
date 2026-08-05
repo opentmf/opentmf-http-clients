@@ -23,6 +23,7 @@ import org.opentmf.client.common.exception.OpenTmfClientNotFoundException;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.util.ErrorBodyExtractor;
+import org.opentmf.client.common.util.HttpClientUtil;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -125,14 +126,18 @@ public final class WebClientConfigUtil {
         return Mono.just(response);
       }
       var status = response.statusCode();
+      var headers = response.headers().asHttpHeaders();
+      var contentType = ErrorBodyExtractor.contentTypeOf(headers);
       return response.bodyToMono(byte[].class)
           .defaultIfEmpty(new byte[0])
           .flatMap(body -> {
-            String rawBody = ErrorBodyExtractor.decodeAsText(body);
-            String message = ErrorBodyExtractor.extractMessage(status, body);
+            String rawBody = ErrorBodyExtractor.decodeAsText(body,
+                ErrorBodyExtractor.charsetOf(contentType));
+            String message = ErrorBodyExtractor.extractMessage(status, body, contentType);
             OpenTmfClientResponseException ex = status.isSameCodeAs(HttpStatus.NOT_FOUND)
                 ? new OpenTmfClientNotFoundException(status, message, rawBody)
                 : new OpenTmfClientResponseException(status, message, rawBody);
+            ex.setResponseDetails(headers, HttpClientUtil.retryAfterFor(status, headers));
             return Mono.error(ex);
           });
     });

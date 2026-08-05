@@ -123,6 +123,7 @@ Each client can override this via a per-client `client-type` property. The three
 | `connection-idle-timeout` | Duration | `4m` | How long idle connections stay in the pool before eviction |
 | `num-retries` | int | `3` | Maximum retry count (used by `executeWithRetry` / `WebClientUtil.retry`) |
 | `retry-wait-duration` | Duration | `5s` | Base wait between retries (exponential backoff) |
+| `max-retry-after` | Duration | `30s` | Longest server-requested `Retry-After` to honor; beyond it the call fails fast instead of waiting |
 | `follow-redirects` | boolean | `true` | Automatically follow HTTP 3xx redirects |
 | `ssl-protocol` | string | `TLS` | SSL/TLS protocol version (`TLS`, `TLSv1.2`, `TLSv1.3`) |
 | `logging-enabled` | boolean | `true` | Enable Logbook request/response logging for this client |
@@ -590,6 +591,31 @@ Both `WebClientUtil` and `SyncClientUtil` filter retries to the following HTTP s
 | 503 | Service Unavailable — server temporarily overloaded or in maintenance |
 | 504 | Gateway Timeout — upstream server did not respond in time |
 | 509 | Bandwidth Limit Exceeded — non-standard, used by some providers to signal throttling |
+
+This is true of **all three backends**. `client-type: apache` used to additionally retry 429 and 503 once inside Apache HttpClient itself, even when you had not opted in; that transport-level retry is disabled as of 2.1.6, so the same `num-retries` now means the same thing everywhere.
+
+### Honoring the server's `Retry-After`
+
+When a retryable response carries `Retry-After`, the retry utilities honor it. The division of authority is:
+
+| Concern | Who decides |
+|---|---|
+| How many attempts | **You** — `Retry-After` never changes the attempt budget |
+| How long between attempts | **The server**, as a *floor* — it can ask you to be more patient than your backoff, never less |
+| The upper bound | **You** — `max-retry-after` (default `30s`) |
+
+If the server asks for longer than `max-retry-after`, the call fails immediately instead of waiting. Retrying early against a server that explicitly asked for room just earns another rejection, and an unbounded wait would park a pooled thread for as long as the server likes.
+
+Both formats are supported — `Retry-After: 120` and `Retry-After: Wed, 05 Aug 2026 12:00:00 GMT`. A `Retry-After` on a status that is *not* in the table above is logged at WARN and ignored: honoring it would introduce a retry you never asked for.
+
+```java
+// Pass the configured bound explicitly to override the 30s default:
+SyncClientUtil.executeWithRetry(
+    () -> restClient.get().uri("/catalog").retrieve().body(String.class),
+    props.getNumRetries(), props.getRetryWaitDuration(), 0.0d, props.getMaxRetryAfter());
+```
+
+On failures, `OpenTmfClientResponseException` exposes `getRetryAfter()` and `getHeaders()` — the response headers as captured at the moment of the error, which is the only point they are still reachable. (On success, read headers yourself from `ResponseEntity`; the library does not intercept them.)
 
 ### Reactive clients
 

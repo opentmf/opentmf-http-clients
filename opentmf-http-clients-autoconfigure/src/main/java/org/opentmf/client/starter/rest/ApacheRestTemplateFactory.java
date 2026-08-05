@@ -80,6 +80,12 @@ public class ApacheRestTemplateFactory extends AbstractRestTemplateFactory {
       HttpClientBuilder httpClientBuilder = HttpClients.custom()
           .setConnectionManager(connManager)
           .setDefaultRequestConfig(requestConfig)
+          // Retry policy lives in one place for all three backends: SyncClientUtil.executeWithRetry
+          // / WebClientUtil.retry, opted into at the call site. Apache's default strategy would
+          // otherwise add an invisible second retry (429/503, honouring Retry-After) on top of
+          // whatever the caller configured, multiplying total attempts and making the same
+          // num-retries behave differently here than on the JDK and Netty backends.
+          .disableAutomaticRetries()
           .evictIdleConnections(TimeValue.ofMilliseconds(
               properties.getConnectionIdleTimeout().toMillis()));
 

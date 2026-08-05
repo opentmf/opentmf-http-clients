@@ -2,15 +2,19 @@ package org.opentmf.client.common.util;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
+import java.nio.charset.Charset;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import lombok.Generated;
+import org.jspecify.annotations.Nullable;
 import org.opentmf.commons.util.JacksonUtil;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import tools.jackson.databind.JsonNode;
 
 /**
@@ -49,11 +53,26 @@ public final class ErrorBodyExtractor {
    * @return a formatted message like {@code "HTTP 404 Not Found: Resource not found"}
    */
   public static String extractMessage(HttpStatusCode status, byte[] body) {
+    return extractMessage(status, body, null);
+  }
+
+  /**
+   * Extracts a human-readable error message, using {@code contentType} to pick the charset.
+   *
+   * <p>The content type only <em>informs</em> decoding — the JSON probe still runs on whatever
+   * decodes successfully, because servers mislabel error bodies routinely (JSON served as
+   * {@code text/html}, or a proxy's HTML error page served as {@code application/json}).</p>
+   *
+   * @param contentType the response {@code Content-Type}, or {@code null} if absent
+   * @return a formatted message like {@code "HTTP 404 Not Found: Resource not found"}
+   */
+  public static String extractMessage(HttpStatusCode status, byte[] body,
+      @Nullable MediaType contentType) {
     String statusPrefix = formatStatus(status);
     if (body == null || body.length == 0) {
       return statusPrefix;
     }
-    String text = decodeAsText(body);
+    String text = decodeAsText(body, charsetOf(contentType));
     if (text == null) {
       return statusPrefix + ": " + NON_TEXT_BODY;
     }
@@ -78,10 +97,20 @@ public final class ErrorBodyExtractor {
    * if the content appears to be binary.
    */
   public static String decodeAsText(byte[] body) {
+    return decodeAsText(body, null);
+  }
+
+  /**
+   * Attempts to decode the body using the given charset, returning {@code null} if the content
+   * appears to be binary.
+   *
+   * @param charset the charset from the response {@code Content-Type}; UTF-8 when {@code null}
+   */
+  public static String decodeAsText(byte[] body, @Nullable Charset charset) {
     if (body == null || body.length == 0) {
       return null;
     }
-    var decoder = StandardCharsets.UTF_8.newDecoder()
+    var decoder = (charset == null ? StandardCharsets.UTF_8 : charset).newDecoder()
         .onMalformedInput(CodingErrorAction.REPORT)
         .onUnmappableCharacter(CodingErrorAction.REPORT);
     try {
@@ -94,6 +123,39 @@ public final class ErrorBodyExtractor {
       }
       return decoded;
     } catch (CharacterCodingException e) {
+      return null;
+    }
+  }
+
+  /**
+   * The {@code Content-Type} of the given headers, or {@code null} when absent or unparseable.
+   *
+   * <p>Deliberately total: this runs inside error handlers, where throwing on a malformed
+   * {@code Content-Type} would replace the server's actual error with a parsing failure and hide
+   * what really went wrong.</p>
+   */
+  public static @Nullable MediaType contentTypeOf(@Nullable HttpHeaders headers) {
+    if (headers == null) {
+      return null;
+    }
+    try {
+      return headers.getContentType();
+    } catch (RuntimeException e) {
+      return null;
+    }
+  }
+
+  /**
+   * The charset named by the content type, or {@code null} to fall back to UTF-8. An unsupported
+   * or malformed charset name is treated as absent rather than propagated as an exception.
+   */
+  public static @Nullable Charset charsetOf(@Nullable MediaType contentType) {
+    if (contentType == null) {
+      return null;
+    }
+    try {
+      return contentType.getCharset();
+    } catch (RuntimeException e) {
       return null;
     }
   }

@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients) (v1x).
 For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-v1x) section in the README.
 
+## [2.1.6] - 2026-08-05
+
+### Changed
+- **Apache-backed clients no longer retry automatically at the transport level.** `client-type: apache`
+  previously inherited Apache HttpClient's `DefaultHttpRequestRetryStrategy`, which silently retried
+  429 and 503 once (honouring `Retry-After`) even when the caller had opted into no retries at all —
+  and stacked on top of any caller-configured retry, so `num-retries: 3` meant up to 8 attempts on
+  Apache versus 4 on the JDK and Netty backends. Retry policy now has exactly one owner, opted into
+  at the call site via `SyncClientUtil.executeWithRetry(...)` / `WebClientUtil.retry(...)`, and all
+  three backends behave identically. **Consumers relying on the implicit Apache retry must now opt
+  in explicitly.**
+
+### Added
+- **`Retry-After` is honoured** by both retry utilities, on the statuses this library already
+  considers retryable. The server controls *when*, the caller controls *how many* and *at most how
+  long*: the header never changes the attempt budget, acts as a floor on the computed backoff (it
+  may only ask the client to be more patient, never less), and a request to wait longer than the new
+  `max-retry-after` fails fast instead of parking a thread. Both grammars are supported
+  (`delay-seconds` and HTTP-date, the latter with clock-skew tolerance). A `Retry-After` arriving on
+  a non-retryable status is logged at WARN and ignored, so it can never introduce a retry that was
+  never requested.
+- **`max-retry-after`** per client — longest server-requested delay to honour. Default 30s.
+- **Response headers on the error path.** `OpenTmfClientResponseException` now carries the response
+  headers and the parsed `Retry-After`. Errors are the only place these are reachable, since the
+  response is closed before the caller sees it; on the success path headers remain the calling
+  application's concern via `ResponseEntity`. `HttpClientUtil.remap(...)` carries them across to
+  domain-specific exception types.
+- **`Content-Type`-aware error parsing.** `ErrorBodyExtractor` now takes the charset from the
+  response's `Content-Type` instead of assuming UTF-8, fixing garbled messages from non-UTF-8
+  vendors. The header only informs the parse — the existing trial-parse fallback is retained,
+  because servers mislabel error bodies routinely.
+
+### Fixed
+- An error handler no longer fails with `NullPointerException` (absent headers) or
+  `InvalidMediaTypeException` (malformed `Content-Type`), either of which would have replaced the
+  server's actual error with an unrelated one.
+- The synchronous backoff no longer overflows: `baseMs * (1L << attempt)` is undefined once
+  `attempt` reaches 63, and the shift is now bounded.
+
 ## [2.1.5] - 2026-07-30
 
 ### Fixed

@@ -78,6 +78,15 @@ public class ClientProperties {
   private Duration retryWaitDuration = Duration.ofSeconds(5);
 
   /**
+   * Longest server-requested {@code Retry-After} delay this client will honour. A retryable
+   * response asking for longer fails immediately instead of waiting, turning an unbounded stall
+   * into a fast, diagnosable error. A server may only lengthen the wait this library already
+   * planned, never shorten it, and never beyond this bound. Applies wherever retries are opted
+   * into (see {@code num-retries}). Default 30s.
+   */
+  private Duration maxRetryAfter = Duration.ofSeconds(30);
+
+  /**
    * Whether HTTP 3xx redirects are followed automatically. Default true.
    */
   private boolean followRedirects = true;

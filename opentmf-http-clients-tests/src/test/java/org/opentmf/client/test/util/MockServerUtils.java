@@ -36,6 +36,25 @@ public class MockServerUtils {
     mock("GET", path, times, responseBody, httpStatus);
   }
 
+  /**
+   * Responds with a single header alongside the body — used to exercise response-header driven
+   * behaviour such as {@code Retry-After}.
+   */
+  public static void getWithHeader(String path, int times, String responseBody,
+      HttpStatus httpStatus, String headerName, String headerValue) {
+    clientAndServer
+        .when(
+            request()
+                .withMethod("GET")
+                .withPath(path),
+            Times.exactly(times))
+        .respond(
+            response()
+                .withBody(responseBody)
+                .withStatusCode(httpStatus.value())
+                .withHeader(headerName, headerValue));
+  }
+
   public static void post(String path, int times, String responseBody, HttpStatus httpStatus) {
     mock("POST", path, times, responseBody, httpStatus);
   }
