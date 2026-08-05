@@ -25,8 +25,8 @@ how far should it go?
 > - **One retry authority.** Apache's transport-level automatic retries get
 >   disabled so all three backends behave alike.
 >
-> Implementation detail lives in
-> [`retry-after-and-content-type-plan.md`](retry-after-and-content-type-plan.md).
+> Shipped in 2.1.6 — see the CHANGELOG entry for what landed, and the
+> "Retry Behavior" section of the README for the resulting contract.
 
 ---
 
