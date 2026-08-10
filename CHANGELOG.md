@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients) (v1x).
 For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-v1x) section in the README.
 
+## [2.1.8] - 2026-08-10
+
+### Changed
+- **Build now enforces exact toolchain versions**: JDK 17.x and Maven 3.9.x (enforcer ranges
+  `[17,18)` / `[3.9,3.10)`, previously minimums). The compiler's `release=17` already pinned
+  bytecode and API level, but building on other JDKs left javadoc output and toolchain behaviour
+  machine-dependent; now the build fails fast instead.
+
 ## [2.1.7] - 2026-08-10
 
 ### Added

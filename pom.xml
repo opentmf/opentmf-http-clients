@@ -248,11 +248,18 @@
             </goals>
             <configuration>
               <rules>
+                <!-- Exact ranges, not minimums: the compiler's release=17 already pins bytecode
+                     and API, but building/releasing must also happen on JDK 17 itself so javadoc
+                     output and toolchain behaviour stay reproducible across machines. -->
                 <requireJavaVersion>
-                  <version>${java.version}</version>
+                  <version>[17,18)</version>
+                  <message>Build with JDK 17 only (e.g. JAVA_HOME=/opt/openjdk-bin-17). The
+                    detected JDK is not 17.x.</message>
                 </requireJavaVersion>
                 <requireMavenVersion>
-                  <version>3.6.3</version>
+                  <version>[3.9,3.10)</version>
+                  <message>Build with Maven 3.9.x. The detected Maven version is outside that
+                    range.</message>
                 </requireMavenVersion>
               </rules>
             </configuration>
