@@ -5,6 +5,7 @@ import static org.mockserver.model.HttpResponse.response;
 
 import org.mockserver.integration.ClientAndServer;
 import org.mockserver.matchers.Times;
+import org.mockserver.model.HttpRequest;
 import org.springframework.http.HttpStatus;
 
 public class MockServerUtils {
@@ -57,5 +58,13 @@ public class MockServerUtils {
 
   public static void post(String path, int times, String responseBody, HttpStatus httpStatus) {
     mock("POST", path, times, responseBody, httpStatus);
+  }
+
+  /**
+   * Returns the requests the mock server actually received on the given path — used to assert
+   * what went over the wire (e.g. propagated trace-context headers).
+   */
+  public static HttpRequest[] recordedRequests(String path) {
+    return clientAndServer.retrieveRecordedRequests(request().withPath(path));
   }
 }

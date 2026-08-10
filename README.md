@@ -799,6 +799,24 @@ opentmf:
 - **Rejected calls** (open circuit, full bulkhead) throw `OpenTmfClientResilienceException` — *not* part of the `OpenTmfClientResponseException` hierarchy, so the retry utilities never retry them: an open circuit means "stop calling". Map it to `503 Service Unavailable` in your error advice if you expose the failure upstream.
 - **Metrics:** with a `MeterRegistry` bean and `resilience4j-micrometer` present, `resilience4j.circuitbreaker.*` and `resilience4j.bulkhead.*` meters (tagged `name=<clientId>`) appear on the standard scrape automatically.
 
+## Observability (trace-context propagation)
+
+Every library-built client — `<id>RestTemplate`, `<id>RestClient`, `<id>WebClient`, dynamic
+clients from `HttpClientRegistry`, and the internal bearer-token clients — is wired to the
+application's Micrometer `ObservationRegistry` bean when one exists. No configuration on the
+library side; behaviour is decided entirely by what the consuming application runs:
+
+| Consumer setup | Outbound effect |
+|---|---|
+| No `ObservationRegistry` bean | Nothing — clients behave exactly as before |
+| `ObservationRegistry` (e.g. Actuator), no tracer | `http.client.requests` observation metrics; no headers added |
+| Micrometer-tracing + a propagator (e.g. OTel/Brave) | W3C `traceparent` (and `tracestate`) emitted on every outbound request — the server-side trace continues across the HTTP hop |
+
+The library adds no dependency for this: the observation API ships transitively with
+`spring-web`, and the actual trace emission comes from the handlers the *application* registers
+(micrometer-tracing's propagating handler). Token-endpoint calls propagate too, since they run
+through the same clients.
+
 ## Dynamic clients (`HttpClientRegistry`)
 
 The static `opentmf.http-clients.*` clients are create-once Spring beans — the right lifecycle for a fixed set of dependencies, the wrong one for clients built **programmatically at runtime** (e.g. from catalog rows that SREs change without a redeploy). For those, autowire the `HttpClientRegistry` bean:

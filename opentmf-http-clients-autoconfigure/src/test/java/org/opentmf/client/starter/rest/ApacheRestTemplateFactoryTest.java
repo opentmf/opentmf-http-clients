@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockserver.model.HttpRequest.request;
 import static org.mockserver.model.HttpResponse.response;
 
+import io.micrometer.observation.ObservationRegistry;
 import java.io.ByteArrayOutputStream;
 import java.math.BigInteger;
 import java.security.KeyPairGenerator;
@@ -50,7 +51,12 @@ class ApacheRestTemplateFactoryTest {
     @Override public ApachePoolMeters getObject() { return null; }
     @Override public ApachePoolMeters getIfAvailable() { return null; }
   };
-  private final ApacheRestTemplateFactory factory = new ApacheRestTemplateFactory(SUPPORT_PROVIDER, NO_RESILIENCE, NO_POOL_METERS);
+  private static final ObjectProvider<ObservationRegistry> NO_OBSERVATION = new ObjectProvider<>() {
+    @Override public ObservationRegistry getObject() { return null; }
+    @Override public ObservationRegistry getIfAvailable() { return null; }
+  };
+  private final ApacheRestTemplateFactory factory =
+      new ApacheRestTemplateFactory(SUPPORT_PROVIDER, NO_RESILIENCE, NO_POOL_METERS, NO_OBSERVATION);
 
   @BeforeAll
   static void startServer() {
@@ -175,7 +181,8 @@ class ApacheRestTemplateFactoryTest {
       @Override public RestLogbookSupport getObject() { return null; }
       @Override public RestLogbookSupport getIfAvailable() { return null; }
     };
-    var localFactory = new ApacheRestTemplateFactory(emptyProvider, NO_RESILIENCE, NO_POOL_METERS);
+    var localFactory =
+        new ApacheRestTemplateFactory(emptyProvider, NO_RESILIENCE, NO_POOL_METERS, NO_OBSERVATION);
     var props = new ClientProperties();
     props.setLoggingEnabled(true);
     var restTemplate = localFactory.create("noBean", props);
@@ -195,6 +202,25 @@ class ApacheRestTemplateFactoryTest {
 
     var restTemplate = factory.create("fixedHdr", props);
     assertThat(restTemplate.getForObject("/headers", String.class)).isEqualTo("headered");
+  }
+
+  @Test
+  void create_withObservationRegistry_sendsTraceparent() {
+    // The expectation only matches when the traceparent header actually arrives on the wire.
+    mockServer.when(request().withMethod("GET").withPath("/traced")
+        .withHeader("traceparent", ObservationTestSupport.TRACEPARENT), Times.once())
+        .respond(response().withStatusCode(200).withBody("traced"));
+
+    var props = new ClientProperties();
+    props.setBaseUrl("http://localhost:" + mockServer.getLocalPort());
+    var registry = ObservationTestSupport.headerInjectingRegistry();
+    var localFactory = new ApacheRestTemplateFactory(SUPPORT_PROVIDER, NO_RESILIENCE,
+        NO_POOL_METERS, ObservationTestSupport.provider(registry));
+
+    var restTemplate = localFactory.create("traced", props);
+
+    assertThat(restTemplate.getObservationRegistry()).isSameAs(registry);
+    assertThat(restTemplate.getForObject("/traced", String.class)).isEqualTo("traced");
   }
 
   @Test

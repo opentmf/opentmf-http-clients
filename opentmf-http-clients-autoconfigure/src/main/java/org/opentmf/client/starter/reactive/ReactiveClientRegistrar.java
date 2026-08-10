@@ -3,6 +3,7 @@ package org.opentmf.client.starter.reactive;
 import static org.opentmf.client.common.util.TokenUtil.TOKEN_SERVICE;
 import static org.opentmf.client.common.util.TokenUtil.WEB_CLIENT;
 
+import io.micrometer.observation.ObservationRegistry;
 import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -41,11 +42,21 @@ public class ReactiveClientRegistrar {
   public ReactiveClientRegistrar(ConfigurableApplicationContext ctx,
       WebClient.Builder webClientBuilder,
       ObjectProvider<ReactiveLogbookSupport> logbookSupportProvider,
-      ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider) {
+      ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider,
+      ObjectProvider<ObservationRegistry> observationRegistryProvider) {
     this.factory = ctx.getBeanFactory();
     this.webClientBuilder = webClientBuilder;
     this.logbookSupport = logbookSupportProvider.getIfAvailable();
     this.resilienceRegistriesProvider = resilienceRegistriesProvider;
+    // Every library-built WebClient (static, dynamic, token) comes off this builder. Handing it
+    // the application's ObservationRegistry makes outbound calls observable regardless of
+    // whether the injected builder was Boot's observation-aware one or a bare WebClient.builder().
+    // With Micrometer-tracing configured, its propagating handler then emits W3C trace context
+    // (traceparent) on every outbound request; without a tracer the observation is a no-op.
+    var observationRegistry = observationRegistryProvider.getIfAvailable();
+    if (observationRegistry != null) {
+      webClientBuilder.observationRegistry(observationRegistry);
+    }
   }
 
   public void registerBeans(String clientId, ClientProperties properties) {

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients) (v1x).
 For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-v1x) section in the README.
 
+## [2.1.7] - 2026-08-10
+
+### Added
+- **W3C trace-context propagation on outbound calls.** Every library-built client — JDK and Apache
+  `RestTemplate`, the derived `RestClient`, and the reactive `WebClient` (static, dynamic, and
+  token clients alike) — is now wired to the application's Micrometer `ObservationRegistry` bean
+  when one exists. Consumers running Micrometer-tracing therefore emit a `traceparent` header on
+  every outbound request automatically, so the distributed trace continues across the HTTP hop
+  instead of stopping at the client. Without an `ObservationRegistry` bean, or without a tracer,
+  nothing changes: the library adds **no** new dependency (the observation API ships transitively
+  with `spring-web`) and the observation is a no-op. Note that in applications where the registry
+  carries metrics handlers (e.g. Spring Boot Actuator), outbound calls now also produce the
+  standard `http.client.requests` observation metrics.
+
 ## [2.1.6] - 2026-08-05
 
 ### Changed

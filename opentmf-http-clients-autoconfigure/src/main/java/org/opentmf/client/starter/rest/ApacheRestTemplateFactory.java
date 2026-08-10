@@ -1,5 +1,6 @@
 package org.opentmf.client.starter.rest;
 
+import io.micrometer.observation.ObservationRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
@@ -33,8 +34,9 @@ public class ApacheRestTemplateFactory extends AbstractRestTemplateFactory {
 
   public ApacheRestTemplateFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider,
       ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider,
-      ObjectProvider<ApachePoolMeters> poolMetersProvider) {
-    super(logbookSupportProvider, resilienceRegistriesProvider);
+      ObjectProvider<ApachePoolMeters> poolMetersProvider,
+      ObjectProvider<ObservationRegistry> observationRegistryProvider) {
+    super(logbookSupportProvider, resilienceRegistriesProvider, observationRegistryProvider);
     this.poolMeters = poolMetersProvider.getIfAvailable();
   }
 
@@ -103,6 +105,7 @@ public class ApacheRestTemplateFactory extends AbstractRestTemplateFactory {
 
       var restTemplate = new RestTemplate(new HttpComponentsClientHttpRequestFactory(httpClient));
       restTemplate.setErrorHandler(new OpenTmfResponseErrorHandler());
+      applyObservationRegistry(restTemplate);
       addResilienceInterceptor(restTemplate, clientId, properties);
       addFixedHeadersInterceptor(restTemplate, properties);
       addLogbookInterceptor(restTemplate, properties);

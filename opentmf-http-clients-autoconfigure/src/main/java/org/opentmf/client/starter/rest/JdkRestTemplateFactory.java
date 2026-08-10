@@ -1,5 +1,6 @@
 package org.opentmf.client.starter.rest;
 
+import io.micrometer.observation.ObservationRegistry;
 import java.net.InetSocketAddress;
 import java.net.ProxySelector;
 import java.net.http.HttpClient;
@@ -19,8 +20,9 @@ import org.springframework.web.util.DefaultUriBuilderFactory;
 public class JdkRestTemplateFactory extends AbstractRestTemplateFactory {
 
   public JdkRestTemplateFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider,
-      ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider) {
-    super(logbookSupportProvider, resilienceRegistriesProvider);
+      ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider,
+      ObjectProvider<ObservationRegistry> observationRegistryProvider) {
+    super(logbookSupportProvider, resilienceRegistriesProvider, observationRegistryProvider);
   }
 
   @Override
@@ -46,6 +48,7 @@ public class JdkRestTemplateFactory extends AbstractRestTemplateFactory {
       requestFactory.setReadTimeout(properties.getResponseTimeout());
       var restTemplate = new RestTemplate(requestFactory);
       restTemplate.setErrorHandler(new OpenTmfResponseErrorHandler());
+      applyObservationRegistry(restTemplate);
       addResilienceInterceptor(restTemplate, clientId, properties);
 
       if (properties.isCompressionEnabled()) {

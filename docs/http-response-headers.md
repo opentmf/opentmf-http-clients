@@ -241,6 +241,14 @@ three above), copied into the exception message and MDC-style log context.
 Never a metric tag, never a retry or resilience input. No behaviour change —
 purely observability.
 
+> **Note (2.1.7):** the *opposite* direction — proactively sending our own W3C
+> `traceparent` on outbound **requests** — is implemented: all library-built
+> clients are wired to the application's Micrometer `ObservationRegistry`, so
+> consumers running Micrometer-tracing get outbound trace-context propagation
+> automatically (see README, "Observability"). This section remains about
+> *reading* the callee's identifiers off the *response* on failure, which is
+> still a future candidate.
+
 ### 4.5 Rate-limit headers (`RateLimit-Remaining` / `-Reset` / `-Limit`, `X-RateLimit-*`)
 
 **Verdict: adopt as *metrics only*, best-effort. Do not let it drive

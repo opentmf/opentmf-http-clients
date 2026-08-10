@@ -1,5 +1,6 @@
 package org.opentmf.client.starter.rest;
 
+import io.micrometer.observation.ObservationRegistry;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
@@ -10,6 +11,7 @@ import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.resilience.ResilienceRegistries;
 import org.opentmf.client.rest.resilience.ResilienceClientHttpRequestInterceptor;
@@ -29,11 +31,28 @@ abstract class AbstractRestTemplateFactory implements RestTemplateFactory {
 
   private final RestLogbookSupport logbookSupport;
   private final ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider;
+  private final @Nullable ObservationRegistry observationRegistry;
 
   protected AbstractRestTemplateFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider,
-      ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider) {
+      ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider,
+      ObjectProvider<ObservationRegistry> observationRegistryProvider) {
     this.logbookSupport = logbookSupportProvider.getIfAvailable();
     this.resilienceRegistriesProvider = resilienceRegistriesProvider;
+    this.observationRegistry = observationRegistryProvider.getIfAvailable();
+  }
+
+  /**
+   * Hands the application's {@link ObservationRegistry} to the {@code RestTemplate} so outbound
+   * calls participate in Micrometer observation. When the consumer runs Micrometer-tracing, its
+   * propagating handler then emits W3C trace context ({@code traceparent}) on every outbound
+   * request; without a tracer the observation is a no-op. When no registry bean exists, the
+   * template keeps its default no-op registry. The {@code RestClient} built from this template
+   * inherits the registry.
+   */
+  protected void applyObservationRegistry(RestTemplate restTemplate) {
+    if (observationRegistry != null) {
+      restTemplate.setObservationRegistry(observationRegistry);
+    }
   }
 
   protected SSLContext buildSslContext(ClientProperties properties)
