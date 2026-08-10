@@ -19,6 +19,10 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   carries metrics handlers (e.g. Spring Boot Actuator), outbound calls now also produce the
   standard `http.client.requests` observation metrics.
 
+### Changed
+- Dependency updates: resilience4j 2.3.0 → 2.4.0, Logbook 4.0.2 → 4.1.0,
+  opentmf-commons 2.1.0 → 2.2.0.
+
 ## [2.1.6] - 2026-08-05
 
 ### Changed
