@@ -18,7 +18,6 @@ import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.rest.util.GzipClientHttpRequestInterceptor;
 import org.opentmf.client.rest.util.OpenTmfRestClientStatusHandler;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.client.ClientHttpRequestFactory;
@@ -170,10 +169,12 @@ class TokenResponseStreamGuardTest {
 
           @Override
           public void write(Precorrelation precorrelation, String request) {
+            // the guard is about how the body is read, not about what gets written
           }
 
           @Override
           public void write(Correlation correlation, String response) {
+            // the guard is about how the body is read, not about what gets written
           }
         }))
         .build();

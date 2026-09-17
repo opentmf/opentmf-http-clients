@@ -47,11 +47,12 @@ class BearerTokenClientTransportRetryIT {
 
   private static final String TOKEN_PATH = "/realms/realm1/protocol/openid-connect/token";
   private static final String TOKEN_JSON = "{\"access_token\":\"tok-1\",\"expires_in\":300}";
-  private static final byte[] HEADERS_THEN_NOTHING = (
-      "HTTP/1.1 200 OK\r\n"
-          + "Content-Type: application/json\r\n"
-          + "Content-Length: 200\r\n"
-          + "\r\n").getBytes(StandardCharsets.US_ASCII);
+  private static final byte[] HEADERS_THEN_NOTHING = """
+      HTTP/1.1 200 OK\r
+      Content-Type: application/json\r
+      Content-Length: 200\r
+      \r
+      """.getBytes(StandardCharsets.US_ASCII);
 
   private static ClientAndServer mockServer;
   private static URI tokenUrl;

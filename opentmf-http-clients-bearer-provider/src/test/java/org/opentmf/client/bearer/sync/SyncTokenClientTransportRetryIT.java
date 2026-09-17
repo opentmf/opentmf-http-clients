@@ -51,11 +51,12 @@ class SyncTokenClientTransportRetryIT {
 
   private static final String TOKEN_PATH = "/realms/realm1/protocol/openid-connect/token";
   private static final String TOKEN_JSON = "{\"access_token\":\"tok-1\",\"expires_in\":300}";
-  private static final byte[] HEADERS_THEN_NOTHING = (
-      "HTTP/1.1 200 OK\r\n"
-          + "Content-Type: application/json\r\n"
-          + "Content-Length: 200\r\n"
-          + "\r\n").getBytes(StandardCharsets.US_ASCII);
+  private static final byte[] HEADERS_THEN_NOTHING = """
+      HTTP/1.1 200 OK\r
+      Content-Type: application/json\r
+      Content-Length: 200\r
+      \r
+      """.getBytes(StandardCharsets.US_ASCII);
 
   private static ClientAndServer mockServer;
   private static URI tokenUrl;
@@ -140,7 +141,8 @@ class SyncTokenClientTransportRetryIT {
         .error(error().withResponseBytes(HEADERS_THEN_NOTHING).withDropConnection(true));
     mockServer.when(tokenRequest()).respond(tokenResponse());
 
-    assertThatThrownBy(() -> tokenClient.getToken(tokenUrl, formData()))
+    var form = formData();
+    assertThatThrownBy(() -> tokenClient.getToken(tokenUrl, form))
         .isInstanceOf(BearerTokenTransportException.class)
         .satisfies(e -> {
           var ex = (BearerTokenTransportException) e;
@@ -164,7 +166,8 @@ class SyncTokenClientTransportRetryIT {
     mockServer.when(tokenRequest()).respond(response().withStatusCode(401)
         .withBody("{\"error\":\"invalid_client\"}"));
 
-    assertThatThrownBy(() -> tokenClient.getToken(tokenUrl, formData()))
+    var form = formData();
+    assertThatThrownBy(() -> tokenClient.getToken(tokenUrl, form))
         .isInstanceOf(OpenTmfClientResponseException.class);
     assertThat(mockServer.retrieveRecordedRequests(tokenRequest())).hasSize(1);
     assertThat(listener.outcomes()).containsExactly(Outcome.FAILED);
