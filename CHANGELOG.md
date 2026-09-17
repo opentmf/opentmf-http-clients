@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients) (v1x).
 For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-v1x) section in the README.
 
+## [2.2.0] - 2026-09-17
+
+### Added
+- **Bearer token mints retry once on a transport-level failure** — sync and reactive token
+  clients alike. A keep-alive connection reused after the peer closed it, a reset, a premature
+  EOF or an I/O timeout under the token `POST` (headers stage *or* body stage — the
+  `IOException: closed` a JDK HttpClient stream throws under Spring's body extractor) is retried
+  exactly once, immediately, with one `WARN`. The JDK HttpClient's own stale-connection retry
+  covers `GET`/`HEAD` only, so a token mint was left to fail on the first such race. Status errors
+  from the token endpoint and open circuit breakers are not retried.
+- **`BearerTokenTransportException`** (`org.opentmf.client.bearer.exception`): the typed failure
+  a mint throws when the retry fails too — `tokenUrl`, `attempts`, cause = the last failure. Not a
+  response exception (no HTTP status exists), so the retry utilities never retry it; map it to 503.
+- **Token-fetch observability**: one `INFO` line per successful mint naming the issuer URL, scope,
+  attempt and duration; and, with a `MeterRegistry` bean, the counter
+  `opentmf.client.token.fetch{client=<id>, outcome=ok|retried|failed}` (Prometheus
+  `opentmf_client_token_fetch_total`), one increment per mint. New `TokenFetchListener`
+  (`org.opentmf.client.bearer.observe`) carries the same signal to hand-wired token clients;
+  `TokenFetchMeters` (`opentmfTokenFetchMeters` bean) is its Micrometer implementation.
+- `RestClientRegistrar.createTokenService(String clientId, RestClient, ClientProperties)` overload;
+  the 2-arg form stays and simply opts out of the counter.
+
+### Changed
+- A mint that fails at the transport level after the retry now throws
+  `BearerTokenTransportException` instead of the raw `RestClientException` /
+  `ResourceAccessException` (sync) or reactor error (reactive). Status errors are unchanged.
+- README: the "only internal retry" note now says what is true — the *reactive* token client retries
+  retryable statuses per `num-retries`; the sync token client never did.
+- Dependency and build-tooling updates: Spring Boot 4.1.0 → 4.1.1; maven-compiler-plugin 3.15.0 →
+  3.16.0, maven-surefire/failsafe 3.5.6 → 3.6.0, maven-deploy-plugin 3.1.4 → 3.2.0,
+  sonar-maven-plugin 5.7.0.6970 → 5.8.0.7211.
+
 ## [2.1.8] - 2026-08-10
 
 ### Changed

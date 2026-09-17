@@ -7,6 +7,7 @@ import io.micrometer.observation.ObservationRegistry;
 import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.opentmf.client.bearer.observe.TokenFetchListener;
 import org.opentmf.client.bearer.reactive.BearerTokenClientImpl;
 import org.opentmf.client.bearer.reactive.BearerTokenServiceImpl;
 import org.opentmf.client.bearer.reactive.BearerTokenServiceMockImpl;
@@ -18,6 +19,7 @@ import org.opentmf.client.reactive.service.api.TokenService;
 import org.opentmf.client.reactive.service.impl.BasicTokenServiceImpl;
 import org.opentmf.client.reactive.service.impl.NoOpTokenService;
 import org.opentmf.client.reactive.util.WebClientConfigUtil;
+import org.opentmf.client.starter.TokenFetchMeters;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
@@ -37,17 +39,20 @@ public class ReactiveClientRegistrar {
   private final WebClient.Builder webClientBuilder;
   private final ReactiveLogbookSupport logbookSupport;
   private final ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider;
+  private final ObjectProvider<TokenFetchMeters> tokenFetchMetersProvider;
 
   @Autowired
   public ReactiveClientRegistrar(ConfigurableApplicationContext ctx,
       WebClient.Builder webClientBuilder,
       ObjectProvider<ReactiveLogbookSupport> logbookSupportProvider,
       ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider,
-      ObjectProvider<ObservationRegistry> observationRegistryProvider) {
+      ObjectProvider<ObservationRegistry> observationRegistryProvider,
+      ObjectProvider<TokenFetchMeters> tokenFetchMetersProvider) {
     this.factory = ctx.getBeanFactory();
     this.webClientBuilder = webClientBuilder;
     this.logbookSupport = logbookSupportProvider.getIfAvailable();
     this.resilienceRegistriesProvider = resilienceRegistriesProvider;
+    this.tokenFetchMetersProvider = tokenFetchMetersProvider;
     // Every library-built WebClient (static, dynamic, token) comes off this builder. Handing it
     // the application's ObservationRegistry makes outbound calls observable regardless of
     // whether the injected builder was Boot's observation-aware one or a bare WebClient.builder().
@@ -124,9 +129,15 @@ public class ReactiveClientRegistrar {
     var tokenWebClient = suppliedTokenWebClient != null
         ? suppliedTokenWebClient
         : buildWebClient(clientId + "Token", clientId, properties);
-    var tokenClient = new BearerTokenClientImpl(properties, bearerConfig, tokenWebClient);
+    var tokenClient = new BearerTokenClientImpl(properties, bearerConfig, tokenWebClient,
+        tokenFetchListener(clientId));
     var cache = TokenCacheUtil.buildTokenCache();
     return new BearerTokenServiceImpl(bearerConfig, cache, tokenClient);
+  }
+
+  private TokenFetchListener tokenFetchListener(String clientId) {
+    var meters = tokenFetchMetersProvider.getIfAvailable();
+    return meters == null ? TokenFetchListener.noop() : meters.listenerFor(clientId);
   }
 
   private void registerIfAbsent(String beanName, Object bean) {

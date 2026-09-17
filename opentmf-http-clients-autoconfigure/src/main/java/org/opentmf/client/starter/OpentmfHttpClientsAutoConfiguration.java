@@ -18,6 +18,7 @@ import org.springframework.context.annotation.Import;
     StringToClientTypeConverter.class,
     ResilienceAutoConfiguration.class,
     ApachePoolMetersConfiguration.class,
+    TokenFetchMetersConfiguration.class,
     org.opentmf.client.starter.reactive.ReactiveClientRegistrar.class,
     org.opentmf.client.starter.reactive.ReactiveLogbookAutoConfiguration.class,
     org.opentmf.client.starter.rest.RestClientRegistrar.class,

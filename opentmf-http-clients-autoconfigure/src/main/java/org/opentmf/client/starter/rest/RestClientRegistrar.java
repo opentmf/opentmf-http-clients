@@ -7,6 +7,8 @@ import static org.opentmf.client.common.util.TokenUtil.TOKEN_SERVICE;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
+import org.opentmf.client.bearer.observe.TokenFetchListener;
 import org.opentmf.client.bearer.sync.SyncBearerTokenServiceImpl;
 import org.opentmf.client.bearer.sync.SyncBearerTokenServiceMockImpl;
 import org.opentmf.client.bearer.sync.SyncTokenClientImpl;
@@ -18,6 +20,8 @@ import org.opentmf.client.rest.service.api.SyncTokenService;
 import org.opentmf.client.rest.service.impl.NoOpSyncTokenService;
 import org.opentmf.client.rest.service.impl.SyncBasicTokenServiceImpl;
 import org.opentmf.client.rest.util.OpenTmfRestClientStatusHandler;
+import org.opentmf.client.starter.TokenFetchMeters;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -34,13 +38,16 @@ public class RestClientRegistrar {
 
   private final ConfigurableListableBeanFactory factory;
   private final Map<ClientType, RestTemplateFactory> restTemplateFactories;
+  private final ObjectProvider<TokenFetchMeters> tokenFetchMetersProvider;
 
   @Autowired
   public RestClientRegistrar(ConfigurableApplicationContext ctx,
-      Map<String, RestTemplateFactory> factoryBeans) {
+      Map<String, RestTemplateFactory> factoryBeans,
+      ObjectProvider<TokenFetchMeters> tokenFetchMetersProvider) {
     this.factory = ctx.getBeanFactory();
     this.restTemplateFactories = factoryBeans.values().stream()
         .collect(Collectors.toMap(this::detectType, f -> f));
+    this.tokenFetchMetersProvider = tokenFetchMetersProvider;
   }
 
   public void registerBeans(String clientId, ClientType clientType, ClientProperties properties) {
@@ -49,7 +56,7 @@ public class RestClientRegistrar {
     registerIfAbsent(clientId + REST_TEMPLATE, restTemplate);
     registerIfAbsent(clientId + REST_CLIENT, restClient);
     registerIfAbsent(clientId + TOKEN_SERVICE,
-        createTokenService(restClient, properties));
+        createTokenService(clientId, restClient, properties));
   }
 
   /**
@@ -88,26 +95,43 @@ public class RestClientRegistrar {
 
   /**
    * Builds the token service matching the client's auth configuration. Token calls run through
-   * the given {@code RestClient}, so they share its decoration (incl. resilience).
+   * the given {@code RestClient}, so they share its decoration (incl. resilience). Bearer mints
+   * are counted on {@code opentmf.client.token.fetch{client=<clientId>}} when a
+   * {@code MeterRegistry} bean exists; a {@code null} client id opts out of the counter.
    */
-  public SyncTokenService createTokenService(RestClient restClient,
+  public SyncTokenService createTokenService(@Nullable String clientId, RestClient restClient,
       ClientProperties properties) {
     return switch (properties.getAuthType()) {
       case NONE -> new NoOpSyncTokenService();
       case BASIC -> new SyncBasicTokenServiceImpl(properties.getBasicAuth());
-      case BEARER -> buildSyncBearerTokenService(restClient, properties);
+      case BEARER -> buildSyncBearerTokenService(clientId, restClient, properties);
     };
   }
 
-  private SyncTokenService buildSyncBearerTokenService(RestClient restClient,
+  /**
+   * As {@link #createTokenService(String, RestClient, ClientProperties)} but without a client
+   * id, hence without token-fetch metrics.
+   */
+  public SyncTokenService createTokenService(RestClient restClient,
       ClientProperties properties) {
+    return createTokenService(null, restClient, properties);
+  }
+
+  private SyncTokenService buildSyncBearerTokenService(@Nullable String clientId,
+      RestClient restClient, ClientProperties properties) {
     var bearerConfig = properties.getBearerAuth();
     if (bearerConfig.isUseMock()) {
       return new SyncBearerTokenServiceMockImpl();
     }
-    var syncTokenClient = new SyncTokenClientImpl(restClient, bearerConfig);
+    var syncTokenClient = new SyncTokenClientImpl(restClient, bearerConfig,
+        tokenFetchListener(clientId));
     var cache = TokenCacheUtil.buildTokenCache();
     return new SyncBearerTokenServiceImpl(bearerConfig, cache, syncTokenClient);
+  }
+
+  private TokenFetchListener tokenFetchListener(@Nullable String clientId) {
+    var meters = clientId == null ? null : tokenFetchMetersProvider.getIfAvailable();
+    return meters == null ? TokenFetchListener.noop() : meters.listenerFor(clientId);
   }
 
   private ClientType detectType(RestTemplateFactory factory) {

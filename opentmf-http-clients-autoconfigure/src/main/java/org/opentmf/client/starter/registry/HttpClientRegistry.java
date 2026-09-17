@@ -174,7 +174,7 @@ public class HttpClientRegistry implements DisposableBean {
     var restTemplate = restRegistrar.createRestTemplate(name, type, properties);
     var requestFactory = rawRequestFactory(restTemplate);
     var restClient = restRegistrar.createRestClient(restTemplate);
-    var tokenService = restRegistrar.createTokenService(restClient, properties);
+    var tokenService = restRegistrar.createTokenService(name, restClient, properties);
     var managed = new ManagedSyncClient(restTemplate, restClient, tokenService);
     Runnable closer = () -> closeRequestFactory(name, requestFactory);
     return new Entry(type, managed, closer);
