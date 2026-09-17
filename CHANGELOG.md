@@ -33,6 +33,9 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   `ResourceAccessException` (sync) or reactor error (reactive). Status errors are unchanged.
 - README: the "only internal retry" note now says what is true — the *reactive* token client retries
   retryable statuses per `num-retries`; the sync token client never did.
+- Dependency and build-tooling updates: Spring Boot 4.1.0 → 4.1.1; maven-compiler-plugin 3.15.0 →
+  3.16.0, maven-surefire/failsafe 3.5.6 → 3.6.0, maven-deploy-plugin 3.1.4 → 3.2.0,
+  sonar-maven-plugin 5.7.0.6970 → 5.8.0.7211.
 
 ## [2.1.8] - 2026-08-10
 
