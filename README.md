@@ -376,6 +376,7 @@ Independent of the per-client beans, the starter registers these singletons:
 | `opentmfResilienceRegistries` | `ResilienceRegistries` | resilience4j on the classpath — see [Resilience](#resilience-circuit-breaker--bulkhead) |
 | `opentmfResilienceMetricsBinder` | `ResilienceMetricsBinder` | resilience4j-micrometer + a `MeterRegistry` bean |
 | `opentmfApachePoolMeters` | `ApachePoolMeters` | Apache HttpClient 5 + Micrometer + a `MeterRegistry` bean |
+| `opentmfTokenFetchMeters` | `TokenFetchMeters` | Micrometer + a `MeterRegistry` bean — see [Token fetch](#token-fetch-transport-retry-typed-failure-metrics) |
 
 You normally only autowire `HttpClientRegistry` (for dynamic clients); the others work behind the scenes — `ResilienceRegistries` is useful in tests or when you need direct access to a client's `CircuitBreaker`/`Bulkhead` instances.
 
@@ -550,6 +551,44 @@ The cache TTL is computed as: `expires_in * cache-safety-factor` (default factor
 
 Most users never need to configure `cache-safety-factor` — the default is sensible. Override only if you need tighter or looser margins.
 
+### Token fetch: transport retry, typed failure, metrics
+
+A cache miss *mints* a token: one `POST` to `token-url`, through the same client (so the same
+interceptors, resilience decoration and observation) as the API calls. A mint is idempotent, and
+the library treats it that way:
+
+- **Retry once on a transport-level failure.** If the connection dies under the mint — a keep-alive
+  connection reused after the peer had already closed it, a reset, a premature EOF, an I/O timeout —
+  the token client retries **exactly once**, immediately, then gives up. This covers both the
+  headers-stage failure (`ResourceAccessException`) and the body-stage one, where the status line
+  and headers arrived and the body then failed (`IOException: closed` from the JDK HttpClient under
+  Spring's body extractor). The JDK HttpClient retries a stale pooled connection by itself only for
+  `GET`/`HEAD`; the token mint is a `POST`, which is why the library owns this retry. Status errors
+  from the token endpoint (`401 invalid_client`, `503`) are **not** retried here, and an open circuit
+  breaker is never retried. The retry logs one `WARN`
+  (`Bearer token fetch from <url> failed at the transport level (<cause>); retrying once`).
+- **Typed failure.** When the retry fails too, the mint throws
+  `org.opentmf.client.bearer.exception.BearerTokenTransportException` (`tokenUrl`, `attempts`,
+  cause = the last failure). It is deliberately *not* an `OpenTmfClientResponseException` — there is
+  no HTTP status to report — so the retry utilities never retry it further. Map it to **503**
+  (identity provider unreachable) in your error advice; a status-bearing
+  `OpenTmfClientResponseException` / `BearerTokenException` from the token endpoint means the
+  identity provider *answered* with an error and is typically mapped to **502**.
+- **One `INFO` line per mint** on success:
+  `Bearer token minted from <token-url> (scope: [..], attempt <n>, <ms> ms)`. The URL names the
+  issuer host and realm; form data (credentials) never appears in the log.
+- **Counter** `opentmf.client.token.fetch{client=<id>, outcome=ok|retried|failed}` (Prometheus:
+  `opentmf_client_token_fetch_total`) with a `MeterRegistry` bean present — one increment per mint,
+  static and dynamic clients alike; cache hits are not counted. `ok` = first attempt succeeded,
+  `retried` = a later attempt did, `failed` = the mint threw (any cause). Without a `MeterRegistry`
+  bean nothing is registered. The same signal reaches code through
+  `org.opentmf.client.bearer.observe.TokenFetchListener`, the extra constructor argument of
+  `SyncTokenClientImpl` / `BearerTokenClientImpl` — useful when wiring the token clients by hand.
+
+Reactive token clients additionally retry retryable **statuses** per `num-retries` /
+`retry-wait-duration` (see [Retry Behavior](#retry-behavior)); each of those attempts owns its own
+single transport retry. Sync token clients have no status-based retry.
+
 ## Mutual TLS Support
 
 Both reactive and REST clients support Mutual TLS authentication through configuration. At least a key store must be provided in the `certificates` block. mTLS can be used together with a forward proxy (HTTP CONNECT tunneling) — the TLS handshake happens end-to-end through the tunnel.
@@ -578,7 +617,7 @@ For detailed instructions on generating keystores and truststores, see [Mutual T
 
 The library **does not automatically retry** your HTTP calls. Retry handling is intentionally opt-in and controlled at call sites — you decide which operations are safe to retry. Use retries only for idempotent operations, and be extra careful with `POST` unless the target endpoint is idempotent.
 
-> **Note:** The only internal retry is on **bearer token retrieval** — when the library fetches an OAuth2 token, it retries using the `num-retries` and `retry-wait-duration` from the client's configuration. This is transparent to the caller.
+> **Note:** The only internal retries are on **bearer token retrieval**. Every token client (sync and reactive) retries a transport-level failure once — see [Token fetch](#token-fetch-transport-retry-typed-failure-metrics). The *reactive* token client additionally retries retryable statuses using the `num-retries` and `retry-wait-duration` from the client's configuration; the sync token client does not. Both are transparent to the caller.
 
 Both `WebClientUtil` and `SyncClientUtil` filter retries to the following HTTP status codes:
 
@@ -844,7 +883,7 @@ Semantics:
 
 - **Grace-period close** — `replace`/`evict` never yank a client out from under in-flight requests: the retired client closes 30 seconds later. Closing is per-type: Apache closes its pooled connection manager gracefully; JDK uses a guarded `AutoCloseable` close (real close on Java 21+ runtimes, GC-reclaimed no-op on 17); Netty disposes the client's (and its token client's) `ConnectionProvider` gracefully.
 - **Resilience reset** — `replace`/`evict` also reset the name's resilience4j instances, so a re-created client starts with breaker state and configuration built from its current properties.
-- **Pool gauges** — with a `MeterRegistry` bean, every Apache client (static or dynamic) exposes `opentmf.client.pool.leased|available|pending|max{client=<name>}`; `evict` removes the gauges.
+- **Pool gauges** — with a `MeterRegistry` bean, every Apache client (static or dynamic) exposes `opentmf.client.pool.leased|available|pending|max{client=<name>}`; `evict` removes the gauges. Bearer clients of any type also count their mints on `opentmf.client.token.fetch{client=<name>,outcome}`.
 - Prefer `client-type: apache` for dynamic sources: real pool control and pool metrics. On the JDK type, `max-connections` is unenforceable (see below).
 
 ### Validating a configuration (`ClientPropertiesValidator`)
