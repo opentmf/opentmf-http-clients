@@ -128,7 +128,7 @@ public class RestClientRegistrar {
     if (bearerConfig.isUseMock()) {
       return new SyncBearerTokenServiceMockImpl();
     }
-    var syncTokenClient = new SyncTokenClientImpl(restClient, bearerConfig,
+    var syncTokenClient = new SyncTokenClientImpl(restClient, properties, bearerConfig,
         tokenFetchListener(clientId));
     var cache = TokenCacheUtil.buildTokenCache();
     return new SyncBearerTokenServiceImpl(bearerConfig, cache, syncTokenClient);

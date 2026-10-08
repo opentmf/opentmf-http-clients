@@ -564,12 +564,15 @@ the library treats it that way:
   and headers arrived and the body then failed (`IOException: closed` from the JDK HttpClient under
   Spring's body extractor). The JDK HttpClient retries a stale pooled connection by itself only for
   `GET`/`HEAD`; the token mint is a `POST`, which is why the library owns this retry. Status errors
-  from the token endpoint (`401 invalid_client`, `503`) are **not** retried here, and an open circuit
-  breaker is never retried. The retry logs one `WARN`
-  (`Bearer token fetch from <url> failed at the transport level (<cause>); retrying once`).
+  from the token endpoint (`401 invalid_client`, `503`) are **not** retried here (retryable statuses
+  have their own retry, below), and an open circuit breaker is never retried. The retry logs one
+  `WARN` carrying the whole cause chain, outermost first
+  (`Bearer token fetch from <url> failed at the transport level (RestClientException: …; caused by
+  IOException: closed; caused by EOFException: …); retrying once`), so the log alone tells a
+  premature EOF from a reset or an HTTP/2 `GOAWAY`.
 - **Typed failure.** When the retry fails too, the mint throws
   `org.opentmf.client.bearer.exception.BearerTokenTransportException` (`tokenUrl`, `attempts`,
-  cause = the last failure). It is deliberately *not* an `OpenTmfClientResponseException` — there is
+  cause = the last failure; the message carries the same cause chain as the `WARN`). It is deliberately *not* an `OpenTmfClientResponseException` — there is
   no HTTP status to report — so the retry utilities never retry it further. Map it to **503**
   (identity provider unreachable) in your error advice; a status-bearing
   `OpenTmfClientResponseException` / `BearerTokenException` from the token endpoint means the
@@ -585,9 +588,11 @@ the library treats it that way:
   `org.opentmf.client.bearer.observe.TokenFetchListener`, the extra constructor argument of
   `SyncTokenClientImpl` / `BearerTokenClientImpl` — useful when wiring the token clients by hand.
 
-Reactive token clients additionally retry retryable **statuses** per `num-retries` /
-`retry-wait-duration` (see [Retry Behavior](#retry-behavior)); each of those attempts owns its own
-single transport retry. Sync token clients have no status-based retry.
+Token clients, sync and reactive alike, additionally retry retryable **statuses** per
+`num-retries` / `retry-wait-duration` / `max-retry-after` (see [Retry Behavior](#retry-behavior));
+each of those attempts owns its own single transport retry. `num-retries: 0` turns the status
+retry off. When wiring `SyncTokenClientImpl` by hand, pass the `ClientProperties` to get it — the
+constructors without them keep the transport retry only.
 
 ## Mutual TLS Support
 
@@ -617,7 +622,7 @@ For detailed instructions on generating keystores and truststores, see [Mutual T
 
 The library **does not automatically retry** your HTTP calls. Retry handling is intentionally opt-in and controlled at call sites — you decide which operations are safe to retry. Use retries only for idempotent operations, and be extra careful with `POST` unless the target endpoint is idempotent.
 
-> **Note:** The only internal retries are on **bearer token retrieval**. Every token client (sync and reactive) retries a transport-level failure once — see [Token fetch](#token-fetch-transport-retry-typed-failure-metrics). The *reactive* token client additionally retries retryable statuses using the `num-retries` and `retry-wait-duration` from the client's configuration; the sync token client does not. Both are transparent to the caller.
+> **Note:** The only internal retries are on **bearer token retrieval**. Every token client (sync and reactive) retries a transport-level failure once — see [Token fetch](#token-fetch-transport-retry-typed-failure-metrics). Every token client additionally retries retryable statuses using the `num-retries`, `retry-wait-duration` and `max-retry-after` from the client's configuration. Both are transparent to the caller.
 
 Both `WebClientUtil` and `SyncClientUtil` filter retries to the following HTTP status codes:
 

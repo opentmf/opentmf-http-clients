@@ -113,7 +113,8 @@ class BearerTokenClientTransportRetryIT {
     assertThat(mockServer.retrieveRecordedRequests(tokenRequest())).hasSize(2);
     assertThat(listener.outcomes()).containsExactly(Outcome.RETRIED);
     assertThat(warnMessages()).singleElement(as(STRING))
-        .contains("failed at the transport level", tokenUrl.toString(), "retrying once");
+        .contains("failed at the transport level", tokenUrl.toString(), "retrying once")
+        .contains("; caused by ");
     assertThat(infoMessages()).singleElement(as(STRING))
         .contains("minted from " + tokenUrl, "attempt 2");
   }

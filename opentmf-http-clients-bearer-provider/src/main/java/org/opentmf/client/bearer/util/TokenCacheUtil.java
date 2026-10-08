@@ -8,7 +8,7 @@ import org.opentmf.client.bearer.model.TokenEntry;
 
 /**
  * Factory for the production Caffeine token cache with per-entry variable TTL
- * derived from {@link TokenEntry#getCacheDuration()}.
+ * derived from the {@code cacheDuration} of each {@link TokenEntry}.
  */
 public final class TokenCacheUtil {
 
