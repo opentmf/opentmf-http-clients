@@ -31,7 +31,13 @@ import reactor.netty.Connection;
 import reactor.netty.resources.ConnectionProvider;
 
 @Configuration(proxyBeanMethods = false)
-@ConditionalOnClass(WebClient.class)
+// Conditioned on the REACTIVE MODULE's presence (TokenService), not only on WebClient's: Spring
+// AI's Ollama module and others put spring-webflux on the classpath of servlet-only services;
+// with WebClient alone the registrar class was loaded for bean introspection and its imports
+// from opentmf-http-clients-reactive failed with NoClassDefFoundError (reported 2026-09-06).
+@ConditionalOnClass(name = {
+    "org.springframework.web.reactive.function.client.WebClient",
+    "org.opentmf.client.reactive.service.api.TokenService"})
 @Slf4j
 public class ReactiveClientRegistrar {
 

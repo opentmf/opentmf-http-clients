@@ -32,7 +32,12 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestTemplate;
 
 @Configuration(proxyBeanMethods = false)
-@ConditionalOnClass(RestTemplate.class)
+// The mirror of the reactive registrar's rule: conditioned on the REST MODULE's presence
+// (SyncTokenService), not only on RestTemplate's — a reactive-only adopter carries spring-web
+// without opentmf-http-clients-rest.
+@ConditionalOnClass(name = {
+    "org.springframework.web.client.RestTemplate",
+    "org.opentmf.client.rest.service.api.SyncTokenService"})
 @Slf4j
 public class RestClientRegistrar {
 

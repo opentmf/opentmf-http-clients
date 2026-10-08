@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients) (v1x).
 For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-v1x) section in the README.
 
+## [2.2.1] - 2026-10-08
+
+### Fixed
+- **The client registrars now condition on their own module, not only on the Spring class.**
+  `ReactiveClientRegistrar` was `@ConditionalOnClass(WebClient.class)`, so a servlet-only service
+  that carries `spring-webflux` transitively (e.g. via Spring AI's Ollama module) loaded it and
+  failed with `NoClassDefFoundError` on the absent `opentmf-http-clients-reactive` classes. It now
+  also requires `org.opentmf.client.reactive.service.api.TokenService`; `RestClientRegistrar`
+  likewise requires `org.opentmf.client.rest.service.api.SyncTokenService` besides `RestTemplate`.
+
 ## [2.2.0] - 2026-09-17
 
 ### Added

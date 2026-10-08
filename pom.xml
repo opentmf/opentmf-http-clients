@@ -76,10 +76,10 @@
 
     <spring-boot.version>4.1.1</spring-boot.version>
     <opentmf-commons.version>2.2.0</opentmf-commons.version>
-    <opentmf-mockserver.version>2.1.11</opentmf-mockserver.version>
-    <logbook.version>4.1.0</logbook.version>
+    <opentmf-mockserver.version>2.1.12</opentmf-mockserver.version>
+    <logbook.version>4.2.0</logbook.version>
 
-    <archunit-junit5.version>1.5.0</archunit-junit5.version>
+    <archunit-junit5.version>1.5.1</archunit-junit5.version>
 
     <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
     <maven-deploy-plugin.version>3.2.0</maven-deploy-plugin.version>
