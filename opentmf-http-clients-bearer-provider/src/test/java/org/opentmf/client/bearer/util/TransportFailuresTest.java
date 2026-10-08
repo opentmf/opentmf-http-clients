@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpTimeoutException;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -63,5 +64,24 @@ class TransportFailuresTest {
   void rootCause_isTheInnermost(String label, Throwable throwable, boolean ignored) {
     var root = TransportFailures.rootCause(throwable);
     assertThat(root.getCause()).isNull();
+  }
+
+  @Test
+  void describeChain_listsEveryLink_outermostFirst() {
+    var chain = new RestClientException("Error while extracting response",
+        new IOException("closed", new EOFException("EOF reached while reading")));
+
+    assertThat(TransportFailures.describeChain(chain)).isEqualTo(
+        "RestClientException: Error while extracting response; caused by IOException: closed; "
+            + "caused by EOFException: EOF reached while reading");
+  }
+
+  @Test
+  void describeChain_isBounded_onACyclicChain() {
+    var outer = new IOException("outer");
+    var inner = new IOException("inner", outer);
+    outer.initCause(inner);
+
+    assertThat(TransportFailures.describeChain(outer).split("; caused by ")).hasSize(10);
   }
 }

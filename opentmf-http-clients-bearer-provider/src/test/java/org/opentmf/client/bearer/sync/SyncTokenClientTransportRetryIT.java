@@ -117,7 +117,10 @@ class SyncTokenClientTransportRetryIT {
     assertThat(mockServer.retrieveRecordedRequests(tokenRequest())).hasSize(2);
     assertThat(listener.outcomes()).containsExactly(Outcome.RETRIED);
     assertThat(warnMessages()).singleElement(as(STRING))
-        .contains("failed at the transport level", tokenUrl.toString(), "retrying once");
+        .contains("failed at the transport level", tokenUrl.toString(), "retrying once")
+        // the whole cause chain, not only its root: EOF vs reset vs GOAWAY is in the middle
+        .contains("IOException: closed; caused by IOException: fixed content-length",
+            "; caused by EOFException");
     assertThat(infoMessages()).singleElement(as(STRING))
         .contains("minted from " + tokenUrl, "attempt 2");
   }
@@ -148,7 +151,9 @@ class SyncTokenClientTransportRetryIT {
           var ex = (BearerTokenTransportException) e;
           assertThat(ex.getTokenUrl()).isEqualTo(tokenUrl);
           assertThat(ex.getAttempts()).isEqualTo(2);
-          assertThat(ex.getMessage()).contains("after 2 attempts");
+          assertThat(ex.getMessage())
+              .contains("after 2 attempts", "IOException: closed; caused by IOException: ",
+                  "; caused by EOFException");
           // the finding's exact shape: the JDK stream's IOException("closed", failed) between
           // Spring's extractor wrapper and the EOF that set `failed`
           assertThat(causeChain(ex)).anySatisfy(t -> assertThat(t)

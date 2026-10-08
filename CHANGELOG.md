@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients) (v1x).
 For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-v1x) section in the README.
 
+## [2.3.0] - 2026-10-08
+
+### Added
+- **Sync token clients retry retryable statuses**, like the reactive ones always did: per the
+  client's `num-retries` / `retry-wait-duration` / `max-retry-after`, each attempt owning its own
+  single transport retry. The library-built sync clients pick this up automatically, so a
+  `503`/`429`/… from the token endpoint is now retried (default `num-retries` is 3); set
+  `num-retries: 0` to keep the previous behaviour. Hand-wired: the new
+  `SyncTokenClientImpl(RestClient, ClientProperties, BearerAuthConfig, TokenFetchListener)`
+  constructor; the existing constructors keep the transport retry only.
+- `TransportFailures.describeChain(Throwable)`: a cause chain on one line, outermost first.
+
+### Changed
+- **The transport-retry `WARN` and the `BearerTokenTransportException` message carry the whole
+  cause chain**, not only its root — e.g. `RestClientException: …; caused by IOException: closed;
+  caused by IOException: fixed content-length: 200, bytes received: 0; caused by EOFException: …`.
+  The root alone could not tell a premature EOF from a reset or an HTTP/2 `GOAWAY`.
+
+### Fixed
+- Javadoc of `TokenCacheUtil` linked a Lombok-generated getter javadoc cannot resolve, which made
+  the javadoc build report an error (non-fatal).
+
 ## [2.2.1] - 2026-10-08
 
 ### Fixed

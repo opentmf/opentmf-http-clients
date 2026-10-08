@@ -67,12 +67,9 @@ public class BearerTokenClientImpl implements BearerTokenClient {
           .doOnSubscribe(s -> attempts.incrementAndGet())
           .retryWhen(Retry.max(1)
               .filter(BearerTokenClientImpl::isTransportFailure)
-              .doBeforeRetry(signal -> {
-                var root = TransportFailures.rootCause(signal.failure());
-                log.warn("Bearer token fetch from {} failed at the transport level ({}: {}); "
-                    + "retrying once", tokenUrl, root.getClass().getSimpleName(),
-                    root.getMessage());
-              })
+              .doBeforeRetry(signal -> log.warn(
+                  "Bearer token fetch from {} failed at the transport level ({}); retrying once",
+                  tokenUrl, TransportFailures.describeChain(signal.failure())))
               .onRetryExhaustedThrow((spec, signal) -> new BearerTokenTransportException(
                   tokenUrl, (int) signal.totalRetries() + 1, signal.failure())))
           .retryWhen(WebClientUtil.retry(properties.getNumRetries(),

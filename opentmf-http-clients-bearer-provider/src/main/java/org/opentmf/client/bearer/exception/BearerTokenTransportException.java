@@ -3,6 +3,7 @@ package org.opentmf.client.bearer.exception;
 import java.io.Serial;
 import java.net.URI;
 import lombok.Getter;
+import org.opentmf.client.bearer.util.TransportFailures;
 
 /**
  * Thrown when a bearer-token mint failed at the transport level on every attempt — no usable
@@ -30,16 +31,8 @@ public class BearerTokenTransportException extends RuntimeException {
 
   public BearerTokenTransportException(URI tokenUrl, int attempts, Throwable cause) {
     super("Bearer token fetch from " + tokenUrl + " failed at the transport level after "
-        + attempts + " attempts: " + rootMessage(cause), cause);
+        + attempts + " attempts: " + TransportFailures.describeChain(cause), cause);
     this.tokenUrl = tokenUrl;
     this.attempts = attempts;
-  }
-
-  private static String rootMessage(Throwable cause) {
-    Throwable root = cause;
-    while (root.getCause() != null) {
-      root = root.getCause();
-    }
-    return root.getClass().getSimpleName() + ": " + root.getMessage();
   }
 }

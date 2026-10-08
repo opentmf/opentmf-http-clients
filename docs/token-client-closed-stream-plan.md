@@ -83,6 +83,7 @@ Versions: spring-web 7.0.8 (Spring Boot 4.1.0), Logbook 4.1.0, JDK 17 `java.net.
 6. **The library's sync token path has no retry at all today** — not on statuses either. The README
    ("the only internal retry is on bearer token retrieval … using `num-retries`") describes the
    reactive twin only. Corrected in this change (docs), status-retry parity is a separate item.
+   *(Status-retry parity implemented in 2.2.2.)*
 7. **Existing exception model.** `BearerTokenException extends OpenTmfClientResponseException`
    (status-bearing; the reactive twin maps IdP error statuses to it, the sync twin lets the
    RestClient status handler's `OpenTmfClientResponseException` through). Nothing typed exists for
