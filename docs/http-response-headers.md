@@ -248,6 +248,8 @@ purely observability.
 > automatically (see README, "Observability"). This section remains about
 > *reading* the callee's identifiers off the *response* on failure, which is
 > still a future candidate.
+>
+> **Held by Gökhan on 2026-10-08** (unscheduled candidate; not in 2.3.0).
 
 ### 4.5 Rate-limit headers (`RateLimit-Remaining` / `-Reset` / `-Limit`, `X-RateLimit-*`)
 
@@ -494,3 +496,9 @@ conservative default.
    vendor-specific diagnostic headers, which is half the point of capturing.
 6. **Is any consumer actually blocked on `ETag`/`If-Match` concurrency
    today,** or is that speculative? It changes the priority of §5 materially.
+
+> **Disposition (2026-10-08, at the 2.3.0 cut):** Q4 (single-flight token refresh), Q5 (redaction
+> policy — error-path headers have been carried unredacted on `OpenTmfClientResponseException`
+> since 2.1.6) and Q6 (`ETag`/`If-Match` concurrency) are **held by Gökhan on 2026-10-08** as
+> unscheduled candidates, as is the §4.4 callee-identifier capture. Q1, Q2 and Q3 were settled by
+> the 2026-08-05 decisions above and shipped in 2.1.6.

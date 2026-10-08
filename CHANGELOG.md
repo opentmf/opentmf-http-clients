@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients) (v1x).
 For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-v1x) section in the README.
 
-## [2.2.2] - 2026-10-08
+## [2.3.0] - 2026-10-08
 
 ### Added
 - **Sync token clients retry retryable statuses**, like the reactive ones always did: per the
