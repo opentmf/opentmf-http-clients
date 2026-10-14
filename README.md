@@ -505,6 +505,46 @@ public class CatalogService {
 }
 ```
 
+#### An interceptor on every client (`OutboundInterceptorContribution`)
+
+The routes above change one injected client. To put an interceptor on **every** synchronous client the library builds, declare an `OutboundInterceptorContribution` bean. It wraps a `ClientHttpRequestInterceptor` and an order:
+
+```java
+@Configuration
+public class OutboundInterceptorConfig {
+
+  @Bean
+  public OutboundInterceptorContribution tenantHeader() {
+    return new OutboundInterceptorContribution((request, body, execution) -> {
+      request.getHeaders().set("X-Tenant", TenantContext.current());
+      return execution.execute(request, body);
+    }, 10);
+  }
+}
+```
+
+**Where it applies.** The library adds the contributions while it builds a client, before the `RestClient` copies the `RestTemplate`'s interceptor list. So they reach:
+
+| Covered | Not covered |
+|---|---|
+| `{clientId}RestTemplate` and `{clientId}RestClient` (`jdk` and `apache`) | `{clientId}WebClient` (`netty`) and its token calls |
+| the token calls of `{clientId}TokenService` (they run through the `RestClient`) | clients you build yourself (see [Replacing a client entirely](#replacing-a-client-entirely)) |
+| sync clients built at runtime through [`HttpClientRegistry`](#dynamic-clients-httpclientregistry) | |
+
+The library applies every contribution to every covered client. An interceptor that is meant for some clients only decides that itself, for example from `request.getURI()`.
+
+**Order.** The contributions run **first**, ahead of all of the library's own interceptors: contributions → resilience → gzip (`jdk` only) → fixed headers → Logbook → HTTP call.
+
+- Among themselves, the contributions run in ascending `order`. The one-argument constructor gives `Ordered.LOWEST_PRECEDENCE`, Spring's order for a bean that declares none. Contributions with the same order keep their bean registration order.
+- As everywhere in Spring, an `@Order` on the `@Bean` method takes precedence over the `order` argument.
+- A contribution sees the request before the fixed headers are filled in, so a header it sets wins over a `fixed-headers` default.
+
+**Rejecting a call.** A contribution can refuse a call by throwing instead of calling `execution.execute(...)`. A `RuntimeException` reaches the caller unchanged, from the `RestTemplate`, the `RestClient` and the `TokenService` alike. Nothing goes on the wire. Because the contribution runs ahead of the resilience interceptor, the refused call does not count against the circuit breaker and takes no bulkhead permit.
+
+**Wiring caveat.** The library looks up the contribution beans each time it builds a client: at startup for the `opentmf.http-clients.*` clients, at registration for the dynamic ones. Declare contributions in a configuration class that does not itself inject the library's client beans, or the two depend on each other.
+
+Without an `OutboundInterceptorContribution` bean, the clients are built exactly as before.
+
 #### Replacing a client entirely
 
 If the YAML-driven configuration is not sufficient (e.g. you need a custom SSL hostname verifier, NTLM authentication, or a keep-alive strategy), define your own bean with the **exact same name** the library would register. The library uses `registerIfAbsent`, so it will skip any bean that already exists.
@@ -838,7 +878,7 @@ opentmf:
 **Semantics:**
 
 - **One configuration per client id, applied to every shape of that id** — `<id>RestTemplate`, `<id>RestClient` or `<id>WebClient`, *and* the client's bearer-token calls. A broken identity provider opens the same circuit as the API itself, preventing token-endpoint stampedes.
-- **Order:** bulkhead → circuit breaker → (time limit) → HTTP call. Your `executeWithRetry` / `WebClientUtil.retry` calls sit *outside* all of it.
+- **Order:** bulkhead → circuit breaker → (time limit) → HTTP call. Your `executeWithRetry` / `WebClientUtil.retry` calls sit *outside* all of it. On sync clients, your [`OutboundInterceptorContribution`s](#an-interceptor-on-every-client-outboundinterceptorcontribution) run before the bulkhead.
 - **What trips the breaker:** connection errors, timeouts, and responses whose status is in `record-status-codes`. 4xx responses never do — they indicate caller bugs, not a degraded remote. 404 stays a normal outcome (`emptyOn404` unaffected).
 - **Rejected calls** (open circuit, full bulkhead) throw `OpenTmfClientResilienceException` — *not* part of the `OpenTmfClientResponseException` hierarchy, so the retry utilities never retry them: an open circuit means "stop calling". Map it to `503 Service Unavailable` in your error advice if you expose the failure upstream.
 - **Metrics:** with a `MeterRegistry` bean and `resilience4j-micrometer` present, `resilience4j.circuitbreaker.*` and `resilience4j.bulkhead.*` meters (tagged `name=<clientId>`) appear on the standard scrape automatically.

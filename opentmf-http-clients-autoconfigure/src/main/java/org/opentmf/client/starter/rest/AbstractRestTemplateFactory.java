@@ -15,6 +15,7 @@ import org.jspecify.annotations.Nullable;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.resilience.ResilienceRegistries;
 import org.opentmf.client.rest.resilience.ResilienceClientHttpRequestInterceptor;
+import org.opentmf.client.rest.service.api.OutboundInterceptorContribution;
 import org.opentmf.client.rest.service.api.RestTemplateFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.util.CollectionUtils;
@@ -22,9 +23,9 @@ import org.springframework.web.client.RestTemplate;
 
 /**
  * Shared plumbing for the {@link RestTemplateFactory} implementations: mTLS
- * {@link SSLContext} construction from base64-encoded JKS material, the fixed-headers
- * interceptor (defaults only — per-request headers win), optional Logbook wiring, and optional
- * resilience4j decoration.
+ * {@link SSLContext} construction from base64-encoded JKS material, the application's
+ * {@link OutboundInterceptorContribution}s, the fixed-headers interceptor (defaults only —
+ * per-request headers win), optional Logbook wiring, and optional resilience4j decoration.
  */
 @Slf4j
 abstract class AbstractRestTemplateFactory implements RestTemplateFactory {
@@ -32,13 +33,30 @@ abstract class AbstractRestTemplateFactory implements RestTemplateFactory {
   private final RestLogbookSupport logbookSupport;
   private final ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider;
   private final @Nullable ObservationRegistry observationRegistry;
+  private final ObjectProvider<OutboundInterceptorContribution> contributionsProvider;
 
   protected AbstractRestTemplateFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider,
       ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider,
-      ObjectProvider<ObservationRegistry> observationRegistryProvider) {
+      ObjectProvider<ObservationRegistry> observationRegistryProvider,
+      ObjectProvider<OutboundInterceptorContribution> contributionsProvider) {
     this.logbookSupport = logbookSupportProvider.getIfAvailable();
     this.resilienceRegistriesProvider = resilienceRegistriesProvider;
     this.observationRegistry = observationRegistryProvider.getIfAvailable();
+    this.contributionsProvider = contributionsProvider;
+  }
+
+  /**
+   * Puts the application's {@link OutboundInterceptorContribution}s at the HEAD of the chain, in
+   * their order, ahead of every interceptor of the library's own. Must be invoked before the
+   * other interceptor-adding helpers. The {@code RestClient} built from the returned
+   * {@code RestTemplate} copies the list, so it carries them too, and so do the token calls
+   * that run through that {@code RestClient}. Looked up on every call, so clients built at
+   * runtime see the same contributions. Without a contribution bean nothing is added.
+   */
+  protected void addContributedInterceptors(RestTemplate restTemplate) {
+    contributionsProvider.orderedStream()
+        .map(OutboundInterceptorContribution::interceptor)
+        .forEach(restTemplate.getInterceptors()::add);
   }
 
   /**
@@ -88,9 +106,10 @@ abstract class AbstractRestTemplateFactory implements RestTemplateFactory {
   }
 
   /**
-   * Adds the resilience4j interceptor as the OUTERMOST interceptor when
-   * {@code resilience.enabled} is true. Must be invoked before the other interceptor-adding
-   * helpers so that the bulkhead and circuit breaker wrap the whole downstream chain. The
+   * Adds the resilience4j interceptor as the OUTERMOST of the library's own interceptors when
+   * {@code resilience.enabled} is true. Must be invoked right after
+   * {@link #addContributedInterceptors} and before the other interceptor-adding helpers, so that
+   * the bulkhead and circuit breaker wrap the whole downstream chain. The
    * {@code RestClient} built from the returned {@code RestTemplate} inherits the interceptor.
    */
   protected void addResilienceInterceptor(RestTemplate restTemplate, String clientId,

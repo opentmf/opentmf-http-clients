@@ -14,6 +14,7 @@ import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Date;
 import java.util.Map;
@@ -29,6 +30,7 @@ import org.mockserver.integration.ClientAndServer;
 import org.mockserver.matchers.Times;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.resilience.ResilienceRegistries;
+import org.opentmf.client.rest.service.api.OutboundInterceptorContribution;
 import org.opentmf.client.starter.ApachePoolMeters;
 import org.springframework.beans.factory.ObjectProvider;
 import org.zalando.logbook.Logbook;
@@ -55,8 +57,11 @@ class ApacheRestTemplateFactoryTest {
     @Override public ObservationRegistry getObject() { return null; }
     @Override public ObservationRegistry getIfAvailable() { return null; }
   };
+  private static final ObjectProvider<OutboundInterceptorContribution> NO_CONTRIBUTIONS =
+      ContributionTestSupport.NONE;
   private final ApacheRestTemplateFactory factory =
-      new ApacheRestTemplateFactory(SUPPORT_PROVIDER, NO_RESILIENCE, NO_POOL_METERS, NO_OBSERVATION);
+      new ApacheRestTemplateFactory(SUPPORT_PROVIDER, NO_RESILIENCE, NO_POOL_METERS, NO_OBSERVATION,
+          NO_CONTRIBUTIONS);
 
   @BeforeAll
   static void startServer() {
@@ -182,7 +187,8 @@ class ApacheRestTemplateFactoryTest {
       @Override public RestLogbookSupport getIfAvailable() { return null; }
     };
     var localFactory =
-        new ApacheRestTemplateFactory(emptyProvider, NO_RESILIENCE, NO_POOL_METERS, NO_OBSERVATION);
+        new ApacheRestTemplateFactory(emptyProvider, NO_RESILIENCE, NO_POOL_METERS, NO_OBSERVATION,
+            NO_CONTRIBUTIONS);
     var props = new ClientProperties();
     props.setLoggingEnabled(true);
     var restTemplate = localFactory.create("noBean", props);
@@ -205,6 +211,51 @@ class ApacheRestTemplateFactoryTest {
   }
 
   @Test
+  void create_withContributions_putsThemAheadOfTheLibrarysInterceptors() {
+    mockServer.when(request().withMethod("GET").withPath("/contributed"), Times.once())
+        .respond(response().withStatusCode(200).withBody("ok"));
+    var seen = new ArrayList<String>();
+    var late = new OutboundInterceptorContribution(ContributionTestSupport.recorder("late", seen),
+        20);
+    var early = new OutboundInterceptorContribution(ContributionTestSupport.recorder("early", seen),
+        10);
+    var localFactory = new ApacheRestTemplateFactory(SUPPORT_PROVIDER, NO_RESILIENCE,
+        NO_POOL_METERS, NO_OBSERVATION,
+        ContributionTestSupport.provider(late, early));
+
+    var props = new ClientProperties();
+    props.setBaseUrl("http://localhost:" + mockServer.getLocalPort());
+    props.setFixedHeaders(Map.of("X-Custom", "myvalue"));
+    var restTemplate = localFactory.create("contributed", props);
+
+    assertThat(restTemplate.getInterceptors()).hasSize(2 + 2)
+        .startsWith(early.interceptor(), late.interceptor());
+    assertThat(restTemplate.getForObject("/contributed", String.class)).isEqualTo("ok");
+    // the fixed-headers interceptor had not run yet when the contributions saw the request
+    assertThat(seen).containsExactly(
+        "early /contributed X-Custom=null", "late /contributed X-Custom=null");
+  }
+
+  @Test
+  void create_withoutContributions_keepsTheLibrarysOwnChain() {
+    assertThat(factory.create("bare", bareProperties()).getInterceptors()).isEmpty();
+
+    var props = new ClientProperties();
+    props.setFixedHeaders(Map.of("X-Custom", "myvalue"));
+    var interceptors = factory.create("uncontributed", props).getInterceptors();
+    // fixed headers, Logbook (Apache decompresses in the HttpClient, not in an interceptor)
+    assertThat(interceptors).hasSize(2);
+    assertThat(interceptors.get(1)).isInstanceOf(LogbookClientHttpRequestInterceptor.class);
+  }
+
+  private static ClientProperties bareProperties() {
+    var props = new ClientProperties();
+    props.setLoggingEnabled(false);
+    props.setCompressionEnabled(false);
+    return props;
+  }
+
+  @Test
   void create_withObservationRegistry_sendsTraceparent() {
     // The expectation only matches when the traceparent header actually arrives on the wire.
     mockServer.when(request().withMethod("GET").withPath("/traced")
@@ -215,7 +266,7 @@ class ApacheRestTemplateFactoryTest {
     props.setBaseUrl("http://localhost:" + mockServer.getLocalPort());
     var registry = ObservationTestSupport.headerInjectingRegistry();
     var localFactory = new ApacheRestTemplateFactory(SUPPORT_PROVIDER, NO_RESILIENCE,
-        NO_POOL_METERS, ObservationTestSupport.provider(registry));
+        NO_POOL_METERS, ObservationTestSupport.provider(registry), NO_CONTRIBUTIONS);
 
     var restTemplate = localFactory.create("traced", props);
 

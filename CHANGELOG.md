@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients) (v1x).
 For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-v1x) section in the README.
 
+## [2.4.0] - 2026-10-14
+
+### Added
+- **`OutboundInterceptorContribution`: one application interceptor on every sync client.** Declare
+  a bean of this new type (in `opentmf-http-clients-rest`; it wraps a `ClientHttpRequestInterceptor`
+  and an order) and the library puts the interceptor at the head of the chain of every
+  `RestTemplate` / `RestClient` it builds: the `<id>RestTemplate` and `<id>RestClient` beans, the
+  token calls of `<id>TokenService`, and the sync clients of `HttpClientRegistry`. It runs ahead of
+  the library's resilience, gzip, fixed-headers and Logbook interceptors. Several contributions run
+  in ascending order, and an `@Order` on the `@Bean` method takes precedence. A contribution that
+  throws stops the call before anything goes on the wire, and the circuit breaker does not count
+  it. Without such a bean the clients are built as before. The reactive (`WebClient`) clients do
+  not take contributions. See the README section "An interceptor on every client".
+
+### Changed
+- `JdkRestTemplateFactory` and `ApacheRestTemplateFactory` (Spring `@Configuration` classes) take
+  one more constructor argument, `ObjectProvider<OutboundInterceptorContribution>`. This matters
+  only to code that constructs them by hand.
+
 ## [2.3.0] - 2026-10-08
 
 ### Added

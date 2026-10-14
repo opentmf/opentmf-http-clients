@@ -15,6 +15,7 @@ import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.resilience.ResilienceRegistries;
+import org.opentmf.client.rest.service.api.OutboundInterceptorContribution;
 import org.opentmf.client.rest.util.OpenTmfResponseErrorHandler;
 import org.opentmf.client.starter.ApachePoolMeters;
 import org.springframework.beans.factory.ObjectProvider;
@@ -35,8 +36,10 @@ public class ApacheRestTemplateFactory extends AbstractRestTemplateFactory {
   public ApacheRestTemplateFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider,
       ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider,
       ObjectProvider<ApachePoolMeters> poolMetersProvider,
-      ObjectProvider<ObservationRegistry> observationRegistryProvider) {
-    super(logbookSupportProvider, resilienceRegistriesProvider, observationRegistryProvider);
+      ObjectProvider<ObservationRegistry> observationRegistryProvider,
+      ObjectProvider<OutboundInterceptorContribution> contributionsProvider) {
+    super(logbookSupportProvider, resilienceRegistriesProvider, observationRegistryProvider,
+        contributionsProvider);
     this.poolMeters = poolMetersProvider.getIfAvailable();
   }
 
@@ -106,6 +109,7 @@ public class ApacheRestTemplateFactory extends AbstractRestTemplateFactory {
       var restTemplate = new RestTemplate(new HttpComponentsClientHttpRequestFactory(httpClient));
       restTemplate.setErrorHandler(new OpenTmfResponseErrorHandler());
       applyObservationRegistry(restTemplate);
+      addContributedInterceptors(restTemplate);
       addResilienceInterceptor(restTemplate, clientId, properties);
       addFixedHeadersInterceptor(restTemplate, properties);
       addLogbookInterceptor(restTemplate, properties);

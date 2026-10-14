@@ -7,6 +7,7 @@ import java.net.http.HttpClient;
 import lombok.extern.slf4j.Slf4j;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.resilience.ResilienceRegistries;
+import org.opentmf.client.rest.service.api.OutboundInterceptorContribution;
 import org.opentmf.client.rest.util.GzipClientHttpRequestInterceptor;
 import org.opentmf.client.rest.util.OpenTmfResponseErrorHandler;
 import org.springframework.beans.factory.ObjectProvider;
@@ -21,8 +22,10 @@ public class JdkRestTemplateFactory extends AbstractRestTemplateFactory {
 
   public JdkRestTemplateFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider,
       ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider,
-      ObjectProvider<ObservationRegistry> observationRegistryProvider) {
-    super(logbookSupportProvider, resilienceRegistriesProvider, observationRegistryProvider);
+      ObjectProvider<ObservationRegistry> observationRegistryProvider,
+      ObjectProvider<OutboundInterceptorContribution> contributionsProvider) {
+    super(logbookSupportProvider, resilienceRegistriesProvider, observationRegistryProvider,
+        contributionsProvider);
   }
 
   @Override
@@ -49,6 +52,7 @@ public class JdkRestTemplateFactory extends AbstractRestTemplateFactory {
       var restTemplate = new RestTemplate(requestFactory);
       restTemplate.setErrorHandler(new OpenTmfResponseErrorHandler());
       applyObservationRegistry(restTemplate);
+      addContributedInterceptors(restTemplate);
       addResilienceInterceptor(restTemplate, clientId, properties);
 
       if (properties.isCompressionEnabled()) {
