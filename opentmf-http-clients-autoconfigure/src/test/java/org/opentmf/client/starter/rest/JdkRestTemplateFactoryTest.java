@@ -14,6 +14,7 @@ import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Date;
 import java.util.Map;
@@ -29,6 +30,8 @@ import org.mockserver.integration.ClientAndServer;
 import org.mockserver.matchers.Times;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.resilience.ResilienceRegistries;
+import org.opentmf.client.rest.service.api.OutboundInterceptorContribution;
+import org.opentmf.client.rest.util.GzipClientHttpRequestInterceptor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.zalando.logbook.Logbook;
 import org.zalando.logbook.spring.LogbookClientHttpRequestInterceptor;
@@ -50,8 +53,10 @@ class JdkRestTemplateFactoryTest {
     @Override public ObservationRegistry getObject() { return null; }
     @Override public ObservationRegistry getIfAvailable() { return null; }
   };
+  private static final ObjectProvider<OutboundInterceptorContribution> NO_CONTRIBUTIONS =
+      ContributionTestSupport.NONE;
   private final JdkRestTemplateFactory factory =
-      new JdkRestTemplateFactory(SUPPORT_PROVIDER, NO_RESILIENCE, NO_OBSERVATION);
+      new JdkRestTemplateFactory(SUPPORT_PROVIDER, NO_RESILIENCE, NO_OBSERVATION, NO_CONTRIBUTIONS);
 
   @BeforeAll
   static void startServer() {
@@ -176,7 +181,8 @@ class JdkRestTemplateFactoryTest {
       @Override public RestLogbookSupport getObject() { return null; }
       @Override public RestLogbookSupport getIfAvailable() { return null; }
     };
-    var localFactory = new JdkRestTemplateFactory(emptyProvider, NO_RESILIENCE, NO_OBSERVATION);
+    var localFactory = new JdkRestTemplateFactory(emptyProvider, NO_RESILIENCE, NO_OBSERVATION,
+        NO_CONTRIBUTIONS);
     var props = new ClientProperties();
     props.setLoggingEnabled(true);
     var restTemplate = localFactory.create("noBean", props);
@@ -199,10 +205,55 @@ class JdkRestTemplateFactoryTest {
   }
 
   @Test
+  void create_withContributions_putsThemAheadOfTheLibrarysInterceptors() {
+    mockServer.when(request().withMethod("GET").withPath("/contributed"), Times.once())
+        .respond(response().withStatusCode(200).withBody("ok"));
+    var seen = new ArrayList<String>();
+    var late = new OutboundInterceptorContribution(ContributionTestSupport.recorder("late", seen),
+        20);
+    var early = new OutboundInterceptorContribution(ContributionTestSupport.recorder("early", seen),
+        10);
+    var localFactory = new JdkRestTemplateFactory(SUPPORT_PROVIDER, NO_RESILIENCE, NO_OBSERVATION,
+        ContributionTestSupport.provider(late, early));
+
+    var props = new ClientProperties();
+    props.setBaseUrl("http://localhost:" + mockServer.getLocalPort());
+    props.setFixedHeaders(Map.of("X-Custom", "myvalue"));
+    var restTemplate = localFactory.create("contributed", props);
+
+    assertThat(restTemplate.getInterceptors()).hasSize(3 + 2)
+        .startsWith(early.interceptor(), late.interceptor());
+    assertThat(restTemplate.getForObject("/contributed", String.class)).isEqualTo("ok");
+    // the fixed-headers interceptor had not run yet when the contributions saw the request
+    assertThat(seen).containsExactly(
+        "early /contributed X-Custom=null", "late /contributed X-Custom=null");
+  }
+
+  @Test
+  void create_withoutContributions_keepsTheLibrarysOwnChain() {
+    assertThat(factory.create("bare", bareProperties()).getInterceptors()).isEmpty();
+
+    var props = new ClientProperties();
+    props.setFixedHeaders(Map.of("X-Custom", "myvalue"));
+    var interceptors = factory.create("uncontributed", props).getInterceptors();
+    // gzip, fixed headers, Logbook (compression and logging are on by default)
+    assertThat(interceptors).hasSize(3);
+    assertThat(interceptors.get(0)).isSameAs(GzipClientHttpRequestInterceptor.instance());
+    assertThat(interceptors.get(2)).isInstanceOf(LogbookClientHttpRequestInterceptor.class);
+  }
+
+  private static ClientProperties bareProperties() {
+    var props = new ClientProperties();
+    props.setLoggingEnabled(false);
+    props.setCompressionEnabled(false);
+    return props;
+  }
+
+  @Test
   void create_withObservationRegistry_appliesItToTheRestTemplate() {
     var registry = ObservationTestSupport.headerInjectingRegistry();
     var localFactory = new JdkRestTemplateFactory(SUPPORT_PROVIDER, NO_RESILIENCE,
-        ObservationTestSupport.provider(registry));
+        ObservationTestSupport.provider(registry), NO_CONTRIBUTIONS);
 
     var restTemplate = localFactory.create("observed", new ClientProperties());
 
@@ -219,7 +270,8 @@ class JdkRestTemplateFactoryTest {
     var props = new ClientProperties();
     props.setBaseUrl("http://localhost:" + mockServer.getLocalPort());
     var localFactory = new JdkRestTemplateFactory(SUPPORT_PROVIDER, NO_RESILIENCE,
-        ObservationTestSupport.provider(ObservationTestSupport.headerInjectingRegistry()));
+        ObservationTestSupport.provider(ObservationTestSupport.headerInjectingRegistry()),
+        NO_CONTRIBUTIONS);
 
     var restTemplate = localFactory.create("traced", props);
     assertThat(restTemplate.getForObject("/traced", String.class)).isEqualTo("traced");
