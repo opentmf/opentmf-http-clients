@@ -11,11 +11,11 @@ import org.opentmf.client.bearer.exception.BearerTokenException;
 import org.opentmf.client.bearer.exception.BearerTokenTransportException;
 import org.opentmf.client.bearer.observe.TokenFetchListener;
 import org.opentmf.client.bearer.observe.TokenFetchListener.Outcome;
+import org.opentmf.client.bearer.util.BearerTokenUtil;
 import org.opentmf.client.bearer.util.TransportFailures;
 import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.reactive.util.WebClientUtil;
-import org.opentmf.commons.util.JacksonUtil;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.util.MultiValueMap;
@@ -32,7 +32,9 @@ import tools.jackson.databind.node.ObjectNode;
  * transport-level failure is retried exactly once per attempt, a second one surfaces as
  * {@link BearerTokenTransportException}; retryable statuses are additionally retried per the
  * client's {@code num-retries} / {@code retry-wait-duration}. Every settled mint is reported to
- * the {@link TokenFetchListener} and, on success, logged at INFO with the issuer URL.
+ * the {@link TokenFetchListener} and, on success, logged at INFO with the issuer URL. A success
+ * answer without a usable token fails with {@code BearerTokenResponseException} and is not
+ * retried.
  */
 @Slf4j
 public class BearerTokenClientImpl implements BearerTokenClient {
@@ -103,8 +105,10 @@ public class BearerTokenClientImpl implements BearerTokenClient {
         .retrieve()
         .onStatus(HttpStatusCode::isError,
             clientResponse -> WebClientUtil.handleError(clientResponse, BearerTokenException.class))
-        .bodyToMono(String.class)
-        .map(body -> (ObjectNode) JacksonUtil.jsonToTree(body));
+        // an entity, not the body: an empty answer still emits, with its status
+        .toEntity(String.class)
+        .map(answer -> BearerTokenUtil.readTokenResponse(url, answer.getStatusCode(),
+            answer.getBody(), bearerConfig.getTokenField()));
   }
 
   /**

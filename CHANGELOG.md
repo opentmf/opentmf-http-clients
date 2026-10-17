@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients) (v1x).
 For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-v1x) section in the README.
 
+## [2.5.1] - 2026-10-17
+
+### Fixed
+- **A token answer without a usable token fails by name.** A success answer from the token
+  endpoint that had no `access_token` (the configured `bearer-auth.token-field`) threw a bare
+  `NullPointerException`; an empty body did the same on the sync path and made the reactive
+  `getToken()` complete **empty**; a body that was not JSON surfaced as a parser error quoting the
+  body; and a `null` or blank token was handed back as if it were one. On both token paths
+  (`SyncTokenClientImpl`, `BearerTokenClientImpl`) every such answer now throws
+  `BearerTokenResponseException` naming the token endpoint, the HTTP status and the token field,
+  never the body. It is not retried and nothing is cached. Present since 2.0.0.
+
+### Added
+- `BearerTokenResponseException` (`opentmf-http-clients-bearer-provider`), an
+  `OpenTmfClientResponseException` with `tokenUrl`, `tokenField` and a `reason` (`EMPTY_BODY`, `NOT_A_JSON_OBJECT`, `FIELD_MISSING`,
+  `FIELD_NOT_A_STRING`, `FIELD_BLANK`). Its status is the success status the endpoint sent; map it
+  on its type. See the README's token-fetch section.
+- `BearerTokenUtil.readTokenResponse`: the shared check, for code that mints tokens by hand.
+
 ## [2.5.0] - 2026-10-17
 
 ### Changed (behaviour)

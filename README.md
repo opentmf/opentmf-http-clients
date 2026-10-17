@@ -657,6 +657,16 @@ and the library treats it that way:
   (identity provider unreachable) in your error advice; a status-bearing
   `OpenTmfClientResponseException` / `BearerTokenException` from the token endpoint means the
   identity provider *answered* with an error and is typically mapped to **502**.
+- **A success answer without a usable token** — an empty body (`204` included), a body that is not
+  a JSON object, or one whose `token-field` is missing, `null`, not a string or blank — throws
+  `org.opentmf.client.bearer.exception.BearerTokenResponseException`, an
+  `OpenTmfClientResponseException` carrying `tokenUrl`, the status, `tokenField` and a `reason`
+  (`EMPTY_BODY` | `NOT_A_JSON_OBJECT` | `FIELD_MISSING` | `FIELD_NOT_A_STRING` | `FIELD_BLANK`):
+  `Bearer token response from <token-url> (200 OK) has no 'access_token' field; expected a JSON
+  object with a 'access_token' string`. The body never appears — not in the message, not in a
+  chained cause, not in `getResponseBody()` — since it may hold other credentials. It is not
+  retried and nothing is cached. Its status is the *success* status the endpoint sent, so map it on
+  its type (typically to **502**, like any unusable identity-provider answer), not on its status.
 - **One `INFO` line per mint** on success:
   `Bearer token minted from <token-url> (scope: [..], attempt <n>, <ms> ms)`. The URL names the
   issuer host and realm; form data (credentials) never appears in the log.
