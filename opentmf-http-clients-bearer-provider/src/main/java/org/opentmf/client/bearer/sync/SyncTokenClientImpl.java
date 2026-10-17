@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.opentmf.client.bearer.exception.BearerTokenTransportException;
 import org.opentmf.client.bearer.observe.TokenFetchListener;
 import org.opentmf.client.bearer.observe.TokenFetchListener.Outcome;
+import org.opentmf.client.bearer.util.BearerTokenUtil;
 import org.opentmf.client.bearer.util.TransportFailures;
 import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
@@ -28,7 +29,9 @@ import tools.jackson.databind.node.ObjectNode;
  * {@code num-retries} / {@code retry-wait-duration} / {@code max-retry-after} — the same contract
  * as the reactive twin — and each of those attempts owns its own single transport retry; other
  * status errors pass through unchanged. Every settled mint is reported to the
- * {@link TokenFetchListener} and, on success, logged at INFO with the issuer URL.
+ * {@link TokenFetchListener} and, on success, logged at INFO with the issuer URL. A success
+ * answer without a usable token fails with {@code BearerTokenResponseException} and is not
+ * retried.
  */
 @Slf4j
 public class SyncTokenClientImpl {
@@ -123,6 +126,9 @@ public class SyncTokenClientImpl {
       requestSpec.headers(h -> h.setBasicAuth(config.getClientId(), config.getClientSecret()));
     }
 
-    return requestSpec.retrieve().body(ObjectNode.class);
+    // read as text, so the status is kept and an unusable answer fails by name, not by parser
+    var answer = requestSpec.retrieve().toEntity(String.class);
+    return BearerTokenUtil.readTokenResponse(tokenUrl, answer.getStatusCode(), answer.getBody(),
+        config.getTokenField());
   }
 }
