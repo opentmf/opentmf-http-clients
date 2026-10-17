@@ -1,22 +1,26 @@
 package org.opentmf.client.bearer.reactive;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockserver.model.HttpRequest.request;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import java.net.URI;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockserver.integration.ClientAndServer;
+import org.mockserver.model.ClearType;
 import org.opentmf.client.bearer.exception.BearerTokenException;
 import org.opentmf.client.bearer.model.TokenEntry;
 import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.mockserver.callback.JwksExpectationInitializer;
+import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.test.StepVerifier;
 
@@ -174,5 +178,31 @@ class BearerTokenServiceIT {
             Map.of("username", "admin_usr", "password", "admin_pwd")))
         .assertNext(token -> assertThat(token).startsWith("eyJ"))
         .verifyComplete();
+  }
+
+  @Test
+  void getToken_sendsTheBearerAuthHeaders_withoutReplacingTheProtocolHeaders() {
+    mockServer.clear(request().withPath(tokenUrl.getPath()), ClearType.LOG);
+    var config = new BearerAuthConfig();
+    config.setTokenUrl(tokenUrl);
+    config.setClientId("client1");
+    config.setClientSecret("client1Secret");
+    config.setFormData(Map.of("grant_type", "client_credentials"));
+    config.setHeaders(Map.of("x-api-key", "KEY-A", "Accept", "text/plain"));
+    var clientProperties = new ClientProperties();
+    clientProperties.setNumRetries(0);
+    var tokenClient = new BearerTokenClientImpl(clientProperties, config,
+        WebClient.builder().build());
+
+    StepVerifier.create(tokenClient.retrieveToken(tokenUrl,
+            new LinkedMultiValueMap<>(Map.of("grant_type", List.of("client_credentials")))))
+        .assertNext(token -> assertThat(token.has("access_token")).isTrue())
+        .verifyComplete();
+
+    var sent = mockServer.retrieveRecordedRequests(request().withPath(tokenUrl.getPath()));
+    assertThat(sent).hasSize(1);
+    assertThat(sent[0].getHeader("x-api-key")).containsExactly("KEY-A");
+    assertThat(sent[0].getHeader("Accept")).containsExactly("application/json");
+    assertThat(sent[0].getFirstHeader("Authorization")).startsWith("Basic ");
   }
 }

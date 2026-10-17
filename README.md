@@ -128,7 +128,7 @@ Each client can override this via a per-client `client-type` property. The three
 | `ssl-protocol` | string | `TLS` | SSL/TLS protocol version (`TLS`, `TLSv1.2`, `TLSv1.3`) |
 | `logging-enabled` | boolean | `true` | Enable Logbook request/response logging for this client |
 | `compression-enabled` | boolean | `true` | Enable HTTP response compression (gzip) |
-| `fixed-headers` | map | *(none)* | Headers added to every request |
+| `fixed-headers` | map | *(none)* | Headers added to every API request as defaults (a per-request value wins). Never sent on the token call — see [Headers on the token call](#headers-on-the-token-call-bearer-authheaders) |
 | `proxy-config` | object | *(none)* | Forward proxy settings (`proxy-host`, `proxy-port`, `non-proxy-hosts`) |
 | `certificates` | object | *(none)* | mTLS key-store and trust-store |
 | `basic-auth` | object | *(none)* | Basic authentication credentials |
@@ -218,6 +218,8 @@ opentmf:
         username-field: username
         fallback-expires-in-seconds: 3600
         cache-safety-factor: 0.9
+        headers:                        # sent on the token call only
+          x-api-key: myApiKey
         form-data:
           username: user
           password: pass
@@ -591,11 +593,49 @@ The cache TTL is computed as: `expires_in * cache-safety-factor` (default factor
 
 Most users never need to configure `cache-safety-factor` — the default is sensible. Override only if you need tighter or looser margins.
 
+### Headers on the token call (`bearer-auth.headers`)
+
+A client's `fixed-headers` belong to its **API calls**. Since 2.5.0 they are never sent to the
+token endpoint, on every client type (`jdk`, `apache`, `netty`) and for dynamic clients too: an
+API key meant for the backend does not travel to the identity provider. The token call carries only
+its own protocol headers — `Content-Type: application/x-www-form-urlencoded`, the Basic
+`Authorization` when `client-id` and `client-secret` are set and, on `netty`, `Accept:
+application/json` — plus whatever `bearer-auth.headers` names.
+
+`bearer-auth.headers` (name → value) is the opt-in for an identity provider that needs a header of
+its own. Those headers go on the token call **only**, never on the API calls, and they cannot
+replace the protocol headers above.
+
+Example — an API gateway (DXL on Apigee at VFDE) that wants its `x-api-key` on every service call.
+Whether its token endpoint wants the key as well is the gateway's to answer; the map is the switch:
+
+```yaml
+opentmf:
+  http-clients:
+    backend:
+      base-url: https://dxl.example.invalid/tobi/v1
+      fixed-headers:
+        x-api-key: my-consumer-key       # every API call
+      bearer-auth:
+        token-url: https://dxl.example.invalid/tobi/v1/token
+        client-id: my-consumer-key
+        client-secret: my-consumer-secret
+        form-data:
+          grant_type: client_credentials
+        headers:
+          x-api-key: my-consumer-key     # the token call too — only if the gateway needs it there
+```
+
+Before 2.5.0 the `fixed-headers` reached the token call as well; a client whose token endpoint
+relied on that adds the same header under `bearer-auth.headers`.
+
 ### Token fetch: transport retry, typed failure, metrics
 
 A cache miss *mints* a token: one `POST` to `token-url`, through the same client (so the same
-interceptors, resilience decoration and observation) as the API calls. A mint is idempotent, and
-the library treats it that way:
+interceptors, resilience decoration and observation) as the API calls — all but the client's
+`fixed-headers`, which never reach the token endpoint (see
+[Headers on the token call](#headers-on-the-token-call-bearer-authheaders)). A mint is idempotent,
+and the library treats it that way:
 
 - **Retry once on a transport-level failure.** If the connection dies under the mint — a keep-alive
   connection reused after the peer had already closed it, a reset, a premature EOF, an I/O timeout —

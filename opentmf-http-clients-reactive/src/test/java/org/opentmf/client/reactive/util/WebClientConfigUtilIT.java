@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
@@ -105,6 +106,57 @@ class WebClientConfigUtilIT {
             .retrieve().bodyToMono(String.class))
         .expectNext("\"headers ok\"")
         .verifyComplete();
+  }
+
+  @Test
+  void createWebClient_oneSharedBuilder_nothingBleedsBetweenClients() throws Exception {
+    mockServer.when(request().withMethod("GET"))
+        .respond(response().withStatusCode(200).withBody("\"ok\""));
+    var shared = WebClient.builder();
+
+    var alphaProps = minimalProperties();
+    alphaProps.setBaseUrl(baseUrl + "/alpha");
+    alphaProps.setFixedHeaders(Map.of("x-api-key", "KEY-A"));
+    var alpha = WebClientConfigUtil.createWebClient(shared,
+        WebClientConfigUtil.httpClient(null, "alpha", alphaProps), alphaProps);
+    var betaProps = minimalProperties();
+    betaProps.setFixedHeaders(Map.of("x-beta", "B"));
+    var beta = WebClientConfigUtil.createWebClient(shared,
+        WebClientConfigUtil.httpClient(null, "beta", betaProps), betaProps);
+
+    alpha.get().uri("/call").retrieve().bodyToMono(String.class).block();
+    beta.get().uri(baseUrl + "/beta-call").retrieve().bodyToMono(String.class).block();
+
+    var alphaCall = mockServer.retrieveRecordedRequests(request().withPath("/alpha/call"))[0];
+    assertThat(alphaCall.getHeader("x-api-key")).containsExactly("KEY-A");
+    assertThat(alphaCall.containsHeader("x-beta")).isFalse();
+    var betaCall = mockServer.retrieveRecordedRequests(request().withPath("/beta-call"))[0];
+    assertThat(betaCall.getHeader("x-beta")).containsExactly("B");
+    assertThat(betaCall.containsHeader("x-api-key")).isFalse();
+    assertThat(betaCall.getHeader("Accept")).containsExactly("application/json");
+    // the shared builder itself is untouched
+    assertThat(shared.build().get().uri(baseUrl + "/plain").retrieve().toBodilessEntity()
+        .block()).isNotNull();
+    var plainCall = mockServer.retrieveRecordedRequests(request().withPath("/plain"))[0];
+    assertThat(plainCall.containsHeader("x-api-key")).isFalse();
+    assertThat(plainCall.containsHeader("x-beta")).isFalse();
+  }
+
+  @Test
+  void createTokenWebClient_leavesTheFixedHeadersOut() throws Exception {
+    mockServer.when(request().withMethod("GET"))
+        .respond(response().withStatusCode(200).withBody("\"ok\""));
+    var props = minimalProperties();
+    props.setFixedHeaders(Map.of("x-api-key", "KEY-A"));
+    var tokenWebClient = WebClientConfigUtil.createTokenWebClient(WebClient.builder(),
+        WebClientConfigUtil.httpClient(null, "tokenTest", props), props);
+
+    tokenWebClient.get().uri(baseUrl + "/token-call").retrieve().bodyToMono(String.class)
+        .block();
+
+    var call = mockServer.retrieveRecordedRequests(request().withPath("/token-call"))[0];
+    assertThat(call.containsHeader("x-api-key")).isFalse();
+    assertThat(call.getHeader("Accept")).containsExactly("application/json");
   }
 
   @Test

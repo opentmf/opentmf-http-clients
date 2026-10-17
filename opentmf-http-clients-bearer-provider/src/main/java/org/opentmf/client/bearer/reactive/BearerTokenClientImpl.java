@@ -90,6 +90,8 @@ public class BearerTokenClientImpl implements BearerTokenClient {
     return webClient
         .post()
         .uri(url)
+        // bearer-auth.headers first, so the protocol's own Content-Type and Basic auth win
+        .headers(headers -> headers.setAll(bearerConfig.getHeaders()))
         .contentType(MediaType.APPLICATION_FORM_URLENCODED)
         .accept(MediaType.APPLICATION_JSON)
         .body(tokenRequestForm)

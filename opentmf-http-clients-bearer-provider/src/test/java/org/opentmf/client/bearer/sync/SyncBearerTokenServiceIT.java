@@ -2,20 +2,24 @@ package org.opentmf.client.bearer.sync;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockserver.model.HttpRequest.request;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import java.net.URI;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockserver.integration.ClientAndServer;
+import org.mockserver.model.ClearType;
 import org.opentmf.client.bearer.model.TokenEntry;
 import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.mockserver.callback.JwksExpectationInitializer;
+import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.RestClient;
 
 class SyncBearerTokenServiceIT {
@@ -148,5 +152,26 @@ class SyncBearerTokenServiceIT {
 
     String token = service.getToken();
     assertThat(token).isNotEmpty().startsWith("eyJ");
+  }
+
+  @Test
+  void getToken_sendsTheBearerAuthHeaders_withoutReplacingTheProtocolHeaders() {
+    mockServer.clear(request().withPath(tokenUrl.getPath()), ClearType.LOG);
+    var config = new BearerAuthConfig();
+    config.setTokenUrl(tokenUrl);
+    config.setClientId("client1");
+    config.setClientSecret("client1Secret");
+    config.setFormData(Map.of("grant_type", "client_credentials"));
+    config.setHeaders(Map.of("x-api-key", "KEY-A", "Content-Type", "application/json"));
+
+    new SyncTokenClientImpl(RestClient.create(), config).getToken(tokenUrl,
+        new LinkedMultiValueMap<>(Map.of("grant_type", List.of("client_credentials"))));
+
+    var sent = mockServer.retrieveRecordedRequests(request().withPath(tokenUrl.getPath()));
+    assertThat(sent).hasSize(1);
+    assertThat(sent[0].getHeader("x-api-key")).containsExactly("KEY-A");
+    assertThat(sent[0].getFirstHeader("Content-Type"))
+        .startsWith("application/x-www-form-urlencoded");
+    assertThat(sent[0].getFirstHeader("Authorization")).startsWith("Basic ");
   }
 }

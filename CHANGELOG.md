@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients) (v1x).
 For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-v1x) section in the README.
 
+## [2.5.0] - 2026-10-17
+
+### Changed (behaviour)
+- **A client's `fixed-headers` no longer reach its token endpoint.** Until now the bearer-token
+  call ran with the client's fixed headers, so an API key meant for the backend (e.g. a gateway's
+  `x-api-key`) was also sent to the identity provider. This happened on every client type (`jdk`
+  and `apache` through the client's `RestClient`, `netty` through the `<id>Token` `WebClient`) and
+  for the dynamic clients of `HttpClientRegistry`, and dates from 2.0.0. The token call now carries
+  only its own protocol headers (`Content-Type`, Basic `Authorization` when client-id and
+  client-secret are set, `Accept` on `netty`) and the new `bearer-auth.headers`. Everything else the
+  sync token call shares with the API calls stays shared: the connection pool, the
+  `OutboundInterceptorContribution`s, resilience and Logbook.
+  **Migration:** a client whose token endpoint needs one of its fixed headers repeats it under
+  `bearer-auth.headers`.
+
+### Added
+- **`bearer-auth.headers`** (name → value): headers sent on the token call only, for an identity
+  provider that needs a header of its own. They never reach the API calls and cannot replace the
+  token call's `Content-Type`, nor its Basic `Authorization` when client-id and client-secret are
+  set. See the README section "Headers on the token call".
+- `FixedHeadersClientHttpRequestInterceptor` (`opentmf-http-clients-rest`): the sync fixed-headers
+  interceptor as a named class (it was a lambda), with unchanged semantics — a fixed header is a
+  default, a per-request value wins.
+- `WebClientConfigUtil.createTokenWebClient` and `ReactiveClientRegistrar.createTokenWebClient`:
+  the client's `WebClient` without its fixed headers, for its token calls.
+
+### Fixed
+- **Reactive clients no longer leak into each other.** Every library-built `WebClient` came off one
+  shared `WebClient.Builder`, and `WebClientConfigUtil.createWebClient` changed that builder in
+  place, so each reactive client also carried the fixed headers, the base URL and the
+  error-wrapping filter of every client built before it, its token `WebClient` included. A client
+  without a `base-url` resolved its relative URIs against an earlier client's. The builder is now
+  cloned per client and the given one is left untouched. Present since 2.0.0.
+
 ## [2.4.0] - 2026-10-14
 
 ### Added

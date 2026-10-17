@@ -17,6 +17,7 @@ import org.opentmf.client.common.resilience.ResilienceRegistries;
 import org.opentmf.client.rest.resilience.ResilienceClientHttpRequestInterceptor;
 import org.opentmf.client.rest.service.api.OutboundInterceptorContribution;
 import org.opentmf.client.rest.service.api.RestTemplateFactory;
+import org.opentmf.client.rest.util.FixedHeadersClientHttpRequestInterceptor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.util.CollectionUtils;
 import org.springframework.web.client.RestTemplate;
@@ -136,14 +137,8 @@ abstract class AbstractRestTemplateFactory implements RestTemplateFactory {
   protected void addFixedHeadersInterceptor(RestTemplate restTemplate,
       ClientProperties properties) {
     if (!CollectionUtils.isEmpty(properties.getFixedHeaders())) {
-      restTemplate.getInterceptors().add((request, body, execution) -> {
-        properties.getFixedHeaders().forEach((k, v) -> {
-          if (!request.getHeaders().containsHeader(k)) {
-            request.getHeaders().set(k, v);
-          }
-        });
-        return execution.execute(request, body);
-      });
+      restTemplate.getInterceptors()
+          .add(new FixedHeadersClientHttpRequestInterceptor(properties.getFixedHeaders()));
     }
   }
 

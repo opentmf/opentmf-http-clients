@@ -112,8 +112,10 @@ public class SyncTokenClientImpl {
   }
 
   private ObjectNode exchange(URI tokenUrl, MultiValueMap<String, String> formData) {
+    // bearer-auth.headers first, so the protocol's own Content-Type and Basic auth win
     var requestSpec = restClient.post()
         .uri(tokenUrl)
+        .headers(h -> h.setAll(config.getHeaders()))
         .contentType(MediaType.APPLICATION_FORM_URLENCODED)
         .body(formData);
 
