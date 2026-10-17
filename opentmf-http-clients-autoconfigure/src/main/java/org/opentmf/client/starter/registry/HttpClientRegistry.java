@@ -201,7 +201,7 @@ public class HttpClientRegistry implements DisposableBean {
     if (properties.getAuthType() == AuthType.BEARER && !properties.getBearerAuth().isUseMock()) {
       tokenConnectionProvider =
           WebClientConfigUtil.buildConnectionProvider(name + "Token", properties);
-      tokenWebClient = reactiveRegistrar.createWebClient(
+      tokenWebClient = reactiveRegistrar.createTokenWebClient(
           name + "Token", name, properties, tokenConnectionProvider);
     }
     var tokenService = reactiveRegistrar.createTokenService(name, properties, tokenWebClient);

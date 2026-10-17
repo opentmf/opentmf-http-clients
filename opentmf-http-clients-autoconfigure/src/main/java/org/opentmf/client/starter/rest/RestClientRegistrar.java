@@ -19,6 +19,7 @@ import org.opentmf.client.rest.service.api.RestTemplateFactory;
 import org.opentmf.client.rest.service.api.SyncTokenService;
 import org.opentmf.client.rest.service.impl.NoOpSyncTokenService;
 import org.opentmf.client.rest.service.impl.SyncBasicTokenServiceImpl;
+import org.opentmf.client.rest.util.FixedHeadersClientHttpRequestInterceptor;
 import org.opentmf.client.rest.util.OpenTmfRestClientStatusHandler;
 import org.opentmf.client.starter.TokenFetchMeters;
 import org.springframework.beans.factory.ObjectProvider;
@@ -100,7 +101,8 @@ public class RestClientRegistrar {
 
   /**
    * Builds the token service matching the client's auth configuration. Token calls run through
-   * the given {@code RestClient}, so they share its decoration (incl. resilience). Bearer mints
+   * the given {@code RestClient}, so they share its decoration (incl. resilience) — all but its
+   * {@code fixed-headers}, which never reach the token endpoint. Bearer mints
    * are counted on {@code opentmf.client.token.fetch{client=<clientId>}} when a
    * {@code MeterRegistry} bean exists; a {@code null} client id opts out of the counter.
    */
@@ -128,10 +130,22 @@ public class RestClientRegistrar {
     if (bearerConfig.isUseMock()) {
       return new SyncBearerTokenServiceMockImpl();
     }
-    var syncTokenClient = new SyncTokenClientImpl(restClient, properties, bearerConfig,
-        tokenFetchListener(clientId));
+    var syncTokenClient = new SyncTokenClientImpl(tokenRestClient(restClient), properties,
+        bearerConfig, tokenFetchListener(clientId));
     var cache = TokenCacheUtil.buildTokenCache();
     return new SyncBearerTokenServiceImpl(bearerConfig, cache, syncTokenClient);
+  }
+
+  /**
+   * The client's {@code RestClient} without its fixed-headers interceptor: the fixed headers
+   * belong to the API calls and never reach the token endpoint. Everything else is shared — the
+   * request factory (so the connection pool), the contributions, resilience and Logbook.
+   */
+  private static RestClient tokenRestClient(RestClient restClient) {
+    return restClient.mutate()
+        .requestInterceptors(interceptors ->
+            interceptors.removeIf(FixedHeadersClientHttpRequestInterceptor.class::isInstance))
+        .build();
   }
 
   private TokenFetchListener tokenFetchListener(@Nullable String clientId) {

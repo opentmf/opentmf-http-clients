@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import java.net.URI;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.Getter;
 import lombok.Setter;
@@ -73,6 +74,15 @@ public class BearerAuthConfig {
    */
   @NotEmpty
   private Map<@NotBlank String, @NotBlank String> formData;
+
+  /**
+   * Headers sent on the token request only, for an identity provider that needs one, e.g. an API
+   * gateway's {@code x-api-key}. The client's {@code fixed-headers} never reach the token
+   * endpoint; repeat a header here when the token endpoint needs it too. Cannot replace the
+   * token request's own {@code Content-Type}, nor its Basic {@code Authorization} when
+   * client-id and client-secret are set. Default empty.
+   */
+  private Map<@NotBlank String, @NotBlank String> headers = new LinkedHashMap<>();
 
   /**
    * Assumed token lifetime in seconds when the token response does not include an expires_in field.

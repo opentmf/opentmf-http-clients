@@ -11,6 +11,7 @@ import java.io.ByteArrayInputStream;
 import java.net.InetSocketAddress;
 import java.security.KeyStore;
 import java.util.Base64;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -97,12 +98,34 @@ public final class WebClientConfigUtil {
     return client;
   }
 
+  /**
+   * Builds a client's {@code WebClient}, its {@code fixed-headers} as default headers. Works on a
+   * {@link WebClient.Builder#clone() clone} of the given builder, which is left untouched: one
+   * shared builder serves every client, and nothing one client sets reaches another.
+   */
   public static WebClient createWebClient(WebClient.Builder webClientBuilder, HttpClient httpClient,
       ClientProperties clientProperties) {
-    var builder = webClientBuilder.defaultHeaders((HttpHeaders httpHeaders) -> {
+    return createWebClient(webClientBuilder, httpClient, clientProperties,
+        clientProperties.getFixedHeaders());
+  }
+
+  /**
+   * As {@link #createWebClient(WebClient.Builder, HttpClient, ClientProperties)}, for the
+   * client's token calls: without its {@code fixed-headers}, which never reach the token
+   * endpoint ({@code bearer-auth.headers} is the opt-in for a header the token endpoint needs).
+   */
+  public static WebClient createTokenWebClient(WebClient.Builder webClientBuilder,
+      HttpClient httpClient, ClientProperties clientProperties) {
+    return createWebClient(webClientBuilder, httpClient, clientProperties, Map.of());
+  }
+
+  private static WebClient createWebClient(WebClient.Builder webClientBuilder,
+      HttpClient httpClient, ClientProperties clientProperties,
+      @Nullable Map<String, String> fixedHeaders) {
+    var builder = webClientBuilder.clone().defaultHeaders((HttpHeaders httpHeaders) -> {
           httpHeaders.add(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE);
-          if (!CollectionUtils.isEmpty(clientProperties.getFixedHeaders())) {
-            clientProperties.getFixedHeaders().forEach(httpHeaders::add);
+          if (!CollectionUtils.isEmpty(fixedHeaders)) {
+            fixedHeaders.forEach(httpHeaders::add);
           }
         })
         .clientConnector(new ReactorClientHttpConnector(httpClient))

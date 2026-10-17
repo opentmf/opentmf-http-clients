@@ -28,6 +28,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.netty.Connection;
+import reactor.netty.http.client.HttpClient;
 import reactor.netty.resources.ConnectionProvider;
 
 @Configuration(proxyBeanMethods = false)
@@ -75,14 +76,9 @@ public class ReactiveClientRegistrar {
       log.warn("Client '{}' has logging-enabled: true, but no Logbook bean found. "
           + "Add org.zalando:logbook-netty to your classpath to enable HTTP logging.", clientId);
     }
-    registerIfAbsent(clientId + WEB_CLIENT, buildWebClient(clientId, clientId, properties));
+    registerIfAbsent(clientId + WEB_CLIENT, createWebClient(clientId, clientId, properties,
+        WebClientConfigUtil.buildConnectionProvider(clientId, properties)));
     registerIfAbsent(clientId + TOKEN_SERVICE, createTokenService(clientId, properties, null));
-  }
-
-  private WebClient buildWebClient(String connectionName, String resilienceName,
-      ClientProperties properties) {
-    return createWebClient(connectionName, resilienceName, properties,
-        WebClientConfigUtil.buildConnectionProvider(connectionName, properties));
   }
 
   /**
@@ -96,6 +92,23 @@ public class ReactiveClientRegistrar {
    */
   public WebClient createWebClient(String connectionName, String resilienceName,
       ClientProperties properties, ConnectionProvider connectionProvider) {
+    return build(connectionName, resilienceName, properties, connectionProvider,
+        WebClientConfigUtil::createWebClient);
+  }
+
+  /**
+   * As {@link #createWebClient}, for a client's token calls: the same decoration, without the
+   * client's {@code fixed-headers}, which never reach the token endpoint.
+   */
+  public WebClient createTokenWebClient(String connectionName, String resilienceName,
+      ClientProperties properties, ConnectionProvider connectionProvider) {
+    return build(connectionName, resilienceName, properties, connectionProvider,
+        WebClientConfigUtil::createTokenWebClient);
+  }
+
+  private WebClient build(String connectionName, String resilienceName,
+      ClientProperties properties, ConnectionProvider connectionProvider,
+      WebClientAssembler assembler) {
     try {
       Consumer<Connection> logbookHandler =
           (properties.isLoggingEnabled() && logbookSupport != null)
@@ -103,12 +116,18 @@ public class ReactiveClientRegistrar {
               : null;
       var httpClient = WebClientConfigUtil.httpClient(
           logbookHandler, properties, connectionProvider);
-      var webClient = WebClientConfigUtil.createWebClient(webClientBuilder, httpClient, properties);
+      var webClient = assembler.assemble(webClientBuilder, httpClient, properties);
       return ReactiveResilience.decorate(webClient, resilienceName, properties,
           resilienceRegistriesProvider.getIfAvailable());
     } catch (Exception e) {
       throw new IllegalArgumentException("Can't create WebClient for " + connectionName, e);
     }
+  }
+
+  @FunctionalInterface
+  private interface WebClientAssembler {
+    WebClient assemble(WebClient.Builder builder, HttpClient httpClient,
+        ClientProperties properties);
   }
 
   /**
@@ -134,7 +153,8 @@ public class ReactiveClientRegistrar {
     }
     var tokenWebClient = suppliedTokenWebClient != null
         ? suppliedTokenWebClient
-        : buildWebClient(clientId + "Token", clientId, properties);
+        : createTokenWebClient(clientId + "Token", clientId, properties,
+            WebClientConfigUtil.buildConnectionProvider(clientId + "Token", properties));
     var tokenClient = new BearerTokenClientImpl(properties, bearerConfig, tokenWebClient,
         tokenFetchListener(clientId));
     var cache = TokenCacheUtil.buildTokenCache();
