@@ -15,6 +15,7 @@ import org.opentmf.client.bearer.util.BearerTokenUtil;
 import org.opentmf.client.bearer.util.TransportFailures;
 import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
+import org.opentmf.client.common.util.TokenCallProperties;
 import org.opentmf.client.reactive.util.WebClientUtil;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
@@ -31,7 +32,8 @@ import tools.jackson.databind.node.ObjectNode;
  * Mints a bearer token over the client's {@link WebClient}. Mirrors the sync twin: a
  * transport-level failure is retried exactly once per attempt, a second one surfaces as
  * {@link BearerTokenTransportException}; retryable statuses are additionally retried per the
- * client's {@code num-retries} / {@code retry-wait-duration}. Every settled mint is reported to
+ * client's {@code num-retries} (or {@code bearer-auth.num-retries} when set) /
+ * {@code retry-wait-duration}. Every settled mint is reported to
  * the {@link TokenFetchListener} and, on success, logged at INFO with the issuer URL. A success
  * answer without a usable token fails with {@code BearerTokenResponseException} and is not
  * retried.
@@ -51,7 +53,7 @@ public class BearerTokenClientImpl implements BearerTokenClient {
 
   public BearerTokenClientImpl(ClientProperties properties, BearerAuthConfig bearerConfig,
       WebClient webClient, TokenFetchListener listener) {
-    this.properties = properties;
+    this.properties = TokenCallProperties.of(properties);
     this.bearerConfig = bearerConfig;
     this.webClient = webClient;
     this.listener = listener;

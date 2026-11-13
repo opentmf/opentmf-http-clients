@@ -13,6 +13,7 @@ import org.opentmf.client.bearer.reactive.BearerTokenServiceImpl;
 import org.opentmf.client.bearer.reactive.BearerTokenServiceMockImpl;
 import org.opentmf.client.bearer.util.TokenCacheUtil;
 import org.opentmf.client.common.model.ClientProperties;
+import org.opentmf.client.common.util.TokenCallProperties;
 import org.opentmf.client.common.resilience.ResilienceRegistries;
 import org.opentmf.client.reactive.resilience.ReactiveResilience;
 import org.opentmf.client.reactive.service.api.TokenService;
@@ -98,12 +99,14 @@ public class ReactiveClientRegistrar {
 
   /**
    * As {@link #createWebClient}, for a client's token calls: the same decoration, without the
-   * client's {@code fixed-headers}, which never reach the token endpoint.
+   * client's {@code fixed-headers}, which never reach the token endpoint, and on the token
+   * request's own {@code request-timeout} / {@code response-timeout} where {@code bearer-auth}
+   * sets them (the client's own otherwise).
    */
   public WebClient createTokenWebClient(String connectionName, String resilienceName,
       ClientProperties properties, ConnectionProvider connectionProvider) {
-    return build(connectionName, resilienceName, properties, connectionProvider,
-        WebClientConfigUtil::createTokenWebClient);
+    return build(connectionName, resilienceName, TokenCallProperties.of(properties),
+        connectionProvider, WebClientConfigUtil::createTokenWebClient);
   }
 
   private WebClient build(String connectionName, String resilienceName,

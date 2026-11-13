@@ -4,6 +4,7 @@ import static org.opentmf.client.common.util.TokenUtil.REST_CLIENT;
 import static org.opentmf.client.common.util.TokenUtil.REST_TEMPLATE;
 import static org.opentmf.client.common.util.TokenUtil.TOKEN_SERVICE;
 
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -15,6 +16,7 @@ import org.opentmf.client.bearer.sync.SyncTokenClientImpl;
 import org.opentmf.client.bearer.util.TokenCacheUtil;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.model.ClientType;
+import org.opentmf.client.common.util.TokenCallProperties;
 import org.opentmf.client.rest.service.api.RestTemplateFactory;
 import org.opentmf.client.rest.service.api.SyncTokenService;
 import org.opentmf.client.rest.service.impl.NoOpSyncTokenService;
@@ -29,6 +31,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestTemplate;
 
@@ -62,7 +65,7 @@ public class RestClientRegistrar {
     registerIfAbsent(clientId + REST_TEMPLATE, restTemplate);
     registerIfAbsent(clientId + REST_CLIENT, restClient);
     registerIfAbsent(clientId + TOKEN_SERVICE,
-        createTokenService(clientId, restClient, properties));
+        createTokenService(clientId, restTemplate, restClient, properties));
   }
 
   /**
@@ -105,14 +108,29 @@ public class RestClientRegistrar {
    * {@code fixed-headers}, which never reach the token endpoint. Bearer mints
    * are counted on {@code opentmf.client.token.fetch{client=<clientId>}} when a
    * {@code MeterRegistry} bean exists; a {@code null} client id opts out of the counter.
+   *
+   * <p>The token calls run on the client's own timeouts and retries, except where
+   * {@code bearer-auth} sets the token request's own {@code request-timeout},
+   * {@code response-timeout} or {@code num-retries}; the token's own timeouts are applied over the
+   * given {@code RestTemplate}'s HTTP client, so the connection pool stays shared.</p>
    */
-  public SyncTokenService createTokenService(@Nullable String clientId, RestClient restClient,
-      ClientProperties properties) {
+  public SyncTokenService createTokenService(@Nullable String clientId,
+      RestTemplate restTemplate, RestClient restClient, ClientProperties properties) {
     return switch (properties.getAuthType()) {
       case NONE -> new NoOpSyncTokenService();
       case BASIC -> new SyncBasicTokenServiceImpl(properties.getBasicAuth());
-      case BEARER -> buildSyncBearerTokenService(clientId, restClient, properties);
+      case BEARER -> buildSyncBearerTokenService(clientId, restTemplate, restClient, properties);
     };
+  }
+
+  /**
+   * As {@link #createTokenService(String, RestTemplate, RestClient, ClientProperties)}, without
+   * the client's {@code RestTemplate}: the token request's own {@code request-timeout} /
+   * {@code response-timeout} cannot be applied then, and setting them fails.
+   */
+  public SyncTokenService createTokenService(@Nullable String clientId, RestClient restClient,
+      ClientProperties properties) {
+    return createTokenService(clientId, null, restClient, properties);
   }
 
   /**
@@ -125,27 +143,71 @@ public class RestClientRegistrar {
   }
 
   private SyncTokenService buildSyncBearerTokenService(@Nullable String clientId,
-      RestClient restClient, ClientProperties properties) {
+      @Nullable RestTemplate restTemplate, RestClient restClient, ClientProperties properties) {
     var bearerConfig = properties.getBearerAuth();
     if (bearerConfig.isUseMock()) {
       return new SyncBearerTokenServiceMockImpl();
     }
-    var syncTokenClient = new SyncTokenClientImpl(tokenRestClient(restClient), properties,
-        bearerConfig, tokenFetchListener(clientId));
+    var tokenFactory = tokenRequestFactory(clientId, restTemplate, properties);
+    var syncTokenClient = new SyncTokenClientImpl(tokenRestClient(restClient, tokenFactory),
+        properties, bearerConfig, tokenFetchListener(clientId));
     var cache = TokenCacheUtil.buildTokenCache();
     return new SyncBearerTokenServiceImpl(bearerConfig, cache, syncTokenClient);
   }
 
   /**
+   * The token calls' own request factory when {@code bearer-auth} sets the token request's own
+   * timeouts, else {@code null}: the token calls then run on the client's request factory.
+   */
+  private static @Nullable ClientHttpRequestFactory tokenRequestFactory(@Nullable String clientId,
+      @Nullable RestTemplate restTemplate, ClientProperties properties) {
+    var tokenProperties = TokenCallProperties.of(properties);
+    if (tokenProperties == properties) {
+      return null;
+    }
+    if (restTemplate == null) {
+      if (tokenProperties.getRequestTimeout().equals(properties.getRequestTimeout())
+          && tokenProperties.getResponseTimeout().equals(properties.getResponseTimeout())) {
+        return null;
+      }
+      throw new IllegalStateException("Client '" + clientId + "' sets bearer-auth."
+          + "request-timeout / bearer-auth.response-timeout, which need the client's "
+          + "RestTemplate: use createTokenService(clientId, restTemplate, restClient, properties)");
+    }
+    return TokenRequestFactories.forTokenCalls(rawRequestFactory(restTemplate), properties,
+        tokenProperties);
+  }
+
+  /**
+   * The template's own request factory. With interceptors present,
+   * {@code RestTemplate.getRequestFactory()} returns an intercepting facade over it; clearing the
+   * interceptor list for the lookup returns the factory itself.
+   */
+  private static ClientHttpRequestFactory rawRequestFactory(RestTemplate restTemplate) {
+    var interceptors = List.copyOf(restTemplate.getInterceptors());
+    restTemplate.getInterceptors().clear();
+    try {
+      return restTemplate.getRequestFactory();
+    } finally {
+      restTemplate.getInterceptors().addAll(interceptors);
+    }
+  }
+
+  /**
    * The client's {@code RestClient} without its fixed-headers interceptor: the fixed headers
    * belong to the API calls and never reach the token endpoint. Everything else is shared — the
-   * request factory (so the connection pool), the contributions, resilience and Logbook.
+   * request factory (so the connection pool; with the token request's own timeouts when
+   * {@code tokenFactory} is given), the contributions, resilience and Logbook.
    */
-  private static RestClient tokenRestClient(RestClient restClient) {
-    return restClient.mutate()
+  private static RestClient tokenRestClient(RestClient restClient,
+      @Nullable ClientHttpRequestFactory tokenFactory) {
+    var builder = restClient.mutate()
         .requestInterceptors(interceptors ->
-            interceptors.removeIf(FixedHeadersClientHttpRequestInterceptor.class::isInstance))
-        .build();
+            interceptors.removeIf(FixedHeadersClientHttpRequestInterceptor.class::isInstance));
+    if (tokenFactory != null) {
+      builder.requestFactory(tokenFactory);
+    }
+    return builder.build();
   }
 
   private TokenFetchListener tokenFetchListener(@Nullable String clientId) {

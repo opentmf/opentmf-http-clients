@@ -218,6 +218,9 @@ opentmf:
         username-field: username
         fallback-expires-in-seconds: 3600
         cache-safety-factor: 0.9
+        request-timeout: 5s             # the token call's own bounds; each defaults to the
+        response-timeout: 10s           # client's own value, see "Token request bounds"
+        num-retries: 1
         headers:                        # sent on the token call only
           x-api-key: myApiKey
         form-data:
@@ -679,10 +682,58 @@ and the library treats it that way:
   `SyncTokenClientImpl` / `BearerTokenClientImpl` — useful when wiring the token clients by hand.
 
 Token clients, sync and reactive alike, additionally retry retryable **statuses** per
-`num-retries` / `retry-wait-duration` / `max-retry-after` (see [Retry Behavior](#retry-behavior));
-each of those attempts owns its own single transport retry. `num-retries: 0` turns the status
-retry off. When wiring `SyncTokenClientImpl` by hand, pass the `ClientProperties` to get it — the
-constructors without them keep the transport retry only.
+`num-retries` (or `bearer-auth.num-retries`, see below) / `retry-wait-duration` /
+`max-retry-after` (see [Retry Behavior](#retry-behavior)); each of those attempts owns its own
+single transport retry. `num-retries: 0` turns the status retry off. When wiring
+`SyncTokenClientImpl` by hand, pass the `ClientProperties` to get it — the constructors without
+them keep the transport retry only.
+
+### Token request bounds (`bearer-auth.request-timeout` / `response-timeout` / `num-retries`)
+
+By default a mint runs on the **client's own** `request-timeout`, `response-timeout` and
+`num-retries` — the bounds you tuned for the backend. For a slow backend that is the wrong bound
+for the identity provider, which answers in seconds: a client with `response-timeout: 120s` and
+`num-retries: 3` waits up to 120 s per token try, twice per attempt (the transport retry above) —
+about 240 s for an identity provider that does not answer, and up to four such attempts (about
+16 minutes) for one that answers `503` slowly, all inside one business call on a cold token
+cache. And a client cannot simply lower `num-retries` for the mint, because the same
+key is the value its business calls opt into.
+
+Three keys under `bearer-auth` give the token request bounds of its own:
+
+| Key | Default | The token request's own… |
+|---|---|---|
+| `bearer-auth.request-timeout` | the client's `request-timeout` | time allowed for obtaining a usable connection (same meaning per client type as the client's key) |
+| `bearer-auth.response-timeout` | the client's `response-timeout` | time to wait for the token endpoint's answer |
+| `bearer-auth.num-retries` | the client's `num-retries` | number of retries of a retryable status (`503`, `429`, …) |
+
+Each one, when unset, is the client's own value, so a client that sets none of them behaves
+exactly as before. The client's own API calls keep the client's bounds whatever is set here. The
+token request still shares the client's connection pool, TLS, proxy, interceptors and resilience
+decoration; only its bounds differ. (On `jdk`, `bearer-auth.request-timeout` is the JDK
+client's connect timeout, which only an `HttpClient` of its own can carry: the token calls then
+get a companion client with the same settings, closed together with the client's own.)
+
+**What to set:** a bound that fits your identity provider, typically a few seconds each — for
+example:
+
+```yaml
+opentmf:
+  http-clients:
+    archive:                          # a slow backend
+      response-timeout: 120s
+      num-retries: 3                  # the archive calls' own retries
+      bearer-auth:
+        token-url: https://idp.example.invalid/token
+        # ...
+        request-timeout: 5s
+        response-timeout: 10s         # an identity provider that does not answer: ~20 s, not ~240 s
+        num-retries: 1
+```
+
+Keep in mind that a mint that times out is retried **once** at once (the transport retry above), so
+an identity provider that does not answer holds a mint for about twice
+`bearer-auth.response-timeout` per status attempt.
 
 ## Mutual TLS Support
 
