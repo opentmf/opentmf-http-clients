@@ -15,6 +15,7 @@ import org.opentmf.client.bearer.util.BearerTokenUtil;
 import org.opentmf.client.bearer.util.TransportFailures;
 import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
+import org.opentmf.client.common.util.TokenCallProperties;
 import org.opentmf.client.rest.util.SyncClientUtil;
 import org.springframework.http.MediaType;
 import org.springframework.util.MultiValueMap;
@@ -26,7 +27,8 @@ import tools.jackson.databind.node.ObjectNode;
  * transport-level failure (see {@link TransportFailures}) is retried exactly once, immediately;
  * a second transport failure surfaces as {@link BearerTokenTransportException}. Retryable
  * statuses from the token endpoint are additionally retried per the client's
- * {@code num-retries} / {@code retry-wait-duration} / {@code max-retry-after} — the same contract
+ * {@code num-retries} (or {@code bearer-auth.num-retries} when set) / {@code retry-wait-duration}
+ * / {@code max-retry-after} — the same contract
  * as the reactive twin — and each of those attempts owns its own single transport retry; other
  * status errors pass through unchanged. Every settled mint is reported to the
  * {@link TokenFetchListener} and, on success, logged at INFO with the issuer URL. A success
@@ -56,10 +58,13 @@ public class SyncTokenClientImpl {
     this(restClient, config, listener, 0, Duration.ZERO, SyncClientUtil.DEFAULT_MAX_RETRY_AFTER);
   }
 
-  /** Retryable statuses are retried per the client's retry settings. */
+  /**
+   * Retryable statuses are retried per the client's retry settings, with
+   * {@code bearer-auth.num-retries} in place of the client's {@code num-retries} when set.
+   */
   public SyncTokenClientImpl(RestClient restClient, ClientProperties properties,
       BearerAuthConfig config, TokenFetchListener listener) {
-    this(restClient, config, listener, properties.getNumRetries(),
+    this(restClient, config, listener, TokenCallProperties.of(properties).getNumRetries(),
         properties.getRetryWaitDuration(), properties.getMaxRetryAfter());
   }
 

@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients) (v1x).
 For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-v1x) section in the README.
 
+## [2.5.2] - 2026-11-13
+
+### Added
+- **A bearer token request can have bounds of its own:** `bearer-auth.request-timeout`,
+  `bearer-auth.response-timeout` and `bearer-auth.num-retries`. Until now a token request always
+  ran on the client's own `request-timeout`, `response-timeout` and `num-retries`, so a client tuned
+  for a slow backend (say 120 s and three retries) gave the identity provider the same bounds, and
+  could not lower them without changing its own business calls' retries. **Each key defaults to the
+  client's own value: a client that sets none of them behaves exactly as before.** The client's
+  API calls keep the client's bounds whatever is set; the token request still shares the client's
+  connection pool, TLS, proxy, interceptors and resilience. On every client type (`jdk`, `apache`,
+  `netty`) and for dynamic clients. See the README's "Token request bounds".
+- `RestClientRegistrar.createTokenService(clientId, restTemplate, restClient, properties)`: the
+  token request's own timeouts are applied over the given `RestTemplate`'s HTTP client. The
+  overloads without the `RestTemplate` keep working; setting `bearer-auth.request-timeout` or
+  `bearer-auth.response-timeout` with them fails by name.
+- `TokenCallProperties.of(ClientProperties)` (`opentmf-http-clients-common`): the settings a
+  token request runs on, for code that wires the token clients by hand.
+
 ## [2.5.1] - 2026-10-17
 
 ### Fixed

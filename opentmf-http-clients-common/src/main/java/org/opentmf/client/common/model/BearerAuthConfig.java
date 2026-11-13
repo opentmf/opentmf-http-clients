@@ -6,11 +6,14 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import java.net.URI;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.Getter;
 import lombok.Setter;
+import org.jspecify.annotations.Nullable;
 import org.springframework.validation.annotation.Validated;
 
 /**
@@ -98,4 +101,33 @@ public class BearerAuthConfig {
   @DecimalMin("0.1")
   @DecimalMax("0.99")
   private double cacheSafetyFactor = 0.9;
+
+  /**
+   * The token request's own {@code request-timeout}: the time allowed for obtaining a usable
+   * connection to the token endpoint, with the same meaning per client type as the client's
+   * {@code request-timeout}. When unset, the token request uses the client's
+   * {@code request-timeout}, as it always has. Set it when the client is tuned for a slow
+   * backend: an identity provider connects in seconds.
+   */
+  private @Nullable Duration requestTimeout;
+
+  /**
+   * The token request's own {@code response-timeout}: the time to wait for the token endpoint's
+   * answer. When unset, the token request uses the client's {@code response-timeout}, as it
+   * always has. A token request that fails at the transport level (a timeout included) is retried
+   * once at once, so an identity provider that does not answer holds a token retrieval for twice
+   * this value. Set it when the client is tuned for a slow backend: an identity provider answers
+   * in seconds.
+   */
+  private @Nullable Duration responseTimeout;
+
+  /**
+   * The token request's own {@code num-retries}: how many times a retryable status from the token
+   * endpoint (e.g. 503) is retried, with the client's {@code retry-wait-duration} and
+   * {@code max-retry-after}. When unset, the client's {@code num-retries} applies, as it always
+   * has. Set it when the client's {@code num-retries} is tuned for its business calls and should
+   * not govern the token retrieval as well.
+   */
+  @PositiveOrZero
+  private @Nullable Integer numRetries;
 }
