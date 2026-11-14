@@ -71,10 +71,9 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   `netty` it is silence per read, so a stalled body is cut but a body that keeps arriving is
   never cut. The README says what the caller sees when a body is cut, and how a caller bounds a
   whole call; `ResponseTimeoutIT` measures both a stalled and a trickling peer on every client
-  type. It also names two traps the measurement found, both present in earlier releases: on
-  `netty` a cut body arrives as a `WebClientResponseException` carrying the answer's own `200`,
-  and on `apache` with Logbook writing the call (`TRACE`) a body cut by the timeout is returned as
-  a `200` with no body and no error.
+  type. It also names a trap the measurement found: on `netty` a cut body arrives as a
+  `WebClientResponseException` carrying the answer's own `200`, so tell it from an error answer by
+  its cause, not by its type.
 
 ### Added
 - `bearer-auth.log-response-body` (default `false`): `true` gives the token calls' log line its
@@ -103,6 +102,22 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   `bearer-auth.response-timeout` with them fails by name.
 - `TokenCallProperties.of(ClientProperties)` (`opentmf-http-clients-common`): the settings a
   token request runs on, for code that wires the token clients by hand.
+
+### Fixed
+- **A response body cut short no longer reaches the caller as an empty success when Logbook logs
+  the call.** Logbook's REST interceptor reads the whole body inside the exchange to log it and
+  drops a failure of that read with a WARN ("Unable to log response"). On `apache`, with the
+  Logbook logger at `TRACE`, the caller's read then found the end of the stream: a peer that sent
+  its headers and stalled in the body until `response-timeout` gave the caller a `200` with no
+  body and no error (measured on 2.5.1). The library's Logbook interceptors (the client's calls
+  and its token calls) now make every read of the body after such a failure raise that same
+  failure, so the caller gets the `RestClientException` caused by `SocketTimeoutException` it
+  gets without Logbook. **The only call that changes is one that today returns an empty success
+  for a response never fully received;** a body that arrives completely is unchanged and logged
+  as before on every client type, and `jdk` and `netty` already failed such a call. **Visible in
+  the interceptor chain:** in a REST client's `RestTemplate` interceptors the guard
+  (`BodyReadFailureGuard`) now stands where `LogbookClientHttpRequestInterceptor` stood, with
+  Logbook's interceptor inside it; code that inspects the chain by type finds the guard there.
 
 ## [2.5.1] - 2026-10-17
 

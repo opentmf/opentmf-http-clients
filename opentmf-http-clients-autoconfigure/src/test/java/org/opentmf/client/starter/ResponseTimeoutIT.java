@@ -8,7 +8,6 @@ import ch.qos.logback.classic.Logger;
 import io.netty.handler.timeout.ReadTimeoutException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
@@ -16,12 +15,15 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -29,6 +31,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
@@ -56,6 +60,7 @@ import org.zalando.logbook.autoconfigure.LogbookAutoConfiguration;
  * {@value #TRICKLE_GAP_MS} ms, each gap well inside the timeout, the whole body well beyond
  * it.</p>
  */
+@ExtendWith(OutputCaptureExtension.class)
 class ResponseTimeoutIT {
 
   private static final Logger log = (Logger) LoggerFactory.getLogger(ResponseTimeoutIT.class);
@@ -76,16 +81,22 @@ class ResponseTimeoutIT {
     }
   }
 
-  private enum Behaviour { STALL, TRICKLE }
+  private enum Behaviour { STALL, TRICKLE, COMPLETE }
 
   private static ServerSocket server;
   private static volatile Behaviour behaviour = Behaviour.STALL;
   private static final List<Socket> accepted = new CopyOnWriteArrayList<>();
   private static Level logbookLevel;
+  private static ScheduledExecutorService writes;
 
   @BeforeAll
   static void startPeer() throws IOException {
     server = new ServerSocket(0);
+    writes = Executors.newSingleThreadScheduledExecutor(task -> {
+      var thread = new Thread(task, "slow-peer-writes");
+      thread.setDaemon(true);
+      return thread;
+    });
     var acceptor = new Thread(ResponseTimeoutIT::acceptLoop, "slow-peer");
     acceptor.setDaemon(true);
     acceptor.start();
@@ -96,6 +107,7 @@ class ResponseTimeoutIT {
   @AfterAll
   static void stopPeer() throws IOException {
     server.close();
+    writes.shutdownNow();
     ((Logger) LoggerFactory.getLogger("org.zalando.logbook")).setLevel(logbookLevel);
   }
 
@@ -125,33 +137,39 @@ class ResponseTimeoutIT {
     }
   }
 
+  /**
+   * Answers one request. The writes are scheduled, not slept for, on one thread, so they leave
+   * in the order and at the moments given. The socket stays open after the last write (the
+   * stalled body's other 56 bytes never come) until the cell closes it.
+   */
   private static void answer(Socket socket, Behaviour how) {
-    try (socket) {
+    try {
       readRequestHead(socket.getInputStream());
-      var out = socket.getOutputStream();
-      if (how == Behaviour.STALL) {
-        TimeUnit.MILLISECONDS.sleep(HEADER_DELAY_MS);
-        head(out, 64);
-        out.write("partial!".getBytes(StandardCharsets.US_ASCII));
-        out.flush();
-        // the other 56 bytes never come; the socket stays open until the cell closes it
-        TimeUnit.SECONDS.sleep(30);
-      } else {
-        head(out, TRICKLE_BYTES);
-        for (int i = 0; i < TRICKLE_BYTES; i++) {
-          if (i > 0) {
-            TimeUnit.MILLISECONDS.sleep(TRICKLE_GAP_MS);
-          }
-          out.write('a' + i);
-          out.flush();
-        }
-        TimeUnit.SECONDS.sleep(30);
-      }
     } catch (IOException gone) {
-      // the client closed the connection: expected once it gives up
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
+      return;
     }
+    switch (how) {
+      case COMPLETE -> send(socket, 0, head(TRICKLE_BYTES) + "abcdefgh");
+      case STALL -> send(socket, HEADER_DELAY_MS, head(64) + "partial!");
+      default -> {
+        send(socket, 0, head(TRICKLE_BYTES));
+        for (int i = 0; i < TRICKLE_BYTES; i++) {
+          send(socket, i * TRICKLE_GAP_MS, String.valueOf((char) ('a' + i)));
+        }
+      }
+    }
+  }
+
+  private static void send(Socket socket, long afterMillis, String text) {
+    writes.schedule(() -> {
+      try {
+        var out = socket.getOutputStream();
+        out.write(text.getBytes(StandardCharsets.US_ASCII));
+        out.flush();
+      } catch (IOException gone) {
+        // the client closed the connection: expected once it gives up
+      }
+    }, afterMillis, TimeUnit.MILLISECONDS);
   }
 
   private static void readRequestHead(InputStream in) throws IOException {
@@ -163,11 +181,10 @@ class ResponseTimeoutIT {
     }
   }
 
-  private static void head(OutputStream out, int contentLength) throws IOException {
-    out.write(("HTTP/1.1 200 OK\r\n"
+  private static String head(int contentLength) {
+    return "HTTP/1.1 200 OK\r\n"
         + "Content-Type: text/plain\r\n"
-        + "Content-Length: " + contentLength + "\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
-    out.flush();
+        + "Content-Length: " + contentLength + "\r\n\r\n";
   }
 
   private static ApplicationContextRunner runner(boolean logbook) {
@@ -253,16 +270,8 @@ class ResponseTimeoutIT {
         assertThat(outcome.millis()).isBetween(HEADER_DELAY_MS + TIMEOUT_MS - SLACK_MS / 2,
             HEADER_DELAY_MS + TIMEOUT_MS + SLACK_MS * 2);
       }
-      if (clientType.equals("apache") && logbook) {
-        // Measured, a gap of today's library, reported and not fixed here: Logbook's interceptor
-        // buffers the body inside the exchange, catches the read timeout ("Unable to log
-        // response", WARN) and hands the response on; the caller's read then finds the end of
-        // the stream, so the call completes as a 200 without a body, the 8 bytes that did
-        // arrive included.
-        assertThat(outcome.failure()).as("the call").isNull();
-        assertThat(outcome.body()).as("the body").isNull();
-        return;
-      }
+      // with Logbook writing too: on 2.5.1, apache returned a 200 without a body here (Logbook's
+      // interceptor drops the read timeout of its own buffering), measured
       assertThat(outcome.failure()).as("the call").isNotNull();
       assertFailureShape(clientType, outcome.failure());
     });
@@ -316,6 +325,32 @@ class ResponseTimeoutIT {
             .isGreaterThan(TIMEOUT_MS * 2);
       }
     });
+  }
+
+  /**
+   * A body that arrives completely is handed to the caller unchanged with Logbook writing, and
+   * Logbook logs it once.
+   */
+  @ParameterizedTest
+  @ValueSource(strings = {"jdk", "apache", "netty"})
+  void aCompleteBody_withLogbookWriting_isUnchanged_andLoggedOnce(String clientType,
+      CapturedOutput output) {
+    behaviour = Behaviour.COMPLETE;
+    int from = output.getAll().length();
+
+    runner(true).withPropertyValues("opentmf.client-type=" + clientType).run(context -> {
+      var outcome = call(context);
+
+      assertThat(outcome.failure()).as("the call").isNull();
+      assertThat(outcome.body()).isEqualTo("abcdefgh".getBytes(StandardCharsets.US_ASCII));
+    });
+
+    var responseLines = output.getAll().substring(from).lines()
+        .filter(line -> line.contains("org.zalando.logbook"))
+        .filter(line -> line.contains("\"type\":\"response\""))
+        .toList();
+    assertThat(responseLines).hasSize(1);
+    assertThat(responseLines.get(0)).contains("abcdefgh").contains("\"status\":200");
   }
 
   /** On netty a caller bounds the whole call with the Mono's own timeout. */
