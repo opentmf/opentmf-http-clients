@@ -71,7 +71,10 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   `netty` it is silence per read, so a stalled body is cut but a body that keeps arriving is
   never cut. The README says what the caller sees when a body is cut, and how a caller bounds a
   whole call; `ResponseTimeoutIT` measures both a stalled and a trickling peer on every client
-  type.
+  type. It also names two traps the measurement found, both present in earlier releases: on
+  `netty` a cut body arrives as a `WebClientResponseException` carrying the answer's own `200`,
+  and on `apache` with Logbook writing the call (`TRACE`) a body cut by the timeout is returned as
+  a `200` with no body and no error.
 
 ### Added
 - `bearer-auth.log-response-body` (default `false`): `true` gives the token calls' log line its
