@@ -28,6 +28,9 @@ public final class TokenStatusFailures {
    */
   private static final Pattern OAUTH_ERROR = Pattern.compile("[a-z][a-z0-9_]{0,63}");
 
+  /** The answer's field that carries the OAuth 2.0 error code (RFC 6749 §5.2). */
+  private static final String ERROR_FIELD = "error";
+
   private TokenStatusFailures() {
   }
 
@@ -63,12 +66,15 @@ public final class TokenStatusFailures {
       return null;
     }
     try {
-      if (JacksonUtil.jsonToTree(body) instanceof ObjectNode answer
-          && answer.get("error") != null && answer.get("error").isString()) {
-        var code = answer.get("error").stringValue();
-        return OAUTH_ERROR.matcher(code).matches() ? code : null;
+      if (!(JacksonUtil.jsonToTree(body) instanceof ObjectNode answer)) {
+        return null;
       }
-      return null;
+      var error = answer.get(ERROR_FIELD);
+      if (error == null || !error.isString()) {
+        return null;
+      }
+      var code = error.stringValue();
+      return OAUTH_ERROR.matcher(code).matches() ? code : null;
     } catch (IllegalArgumentException notJson) {
       // not chained, not logged: the parser's message quotes the body
       return null;
