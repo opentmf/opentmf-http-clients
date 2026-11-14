@@ -159,6 +159,8 @@ Duration values accept Spring Boot duration strings: `500ms`, `3s`, `1m`, `PT30S
 > `logbook-spring-boot-autoconfigure` transitively provides `logbook-spring`, `logbook-core`, and the `Logbook` bean auto-configuration. For reactive clients, `logbook-netty` must be added separately as it's not included transitively.
 >
 > If Logbook is not on the classpath, a WARN is logged at startup and no logging interceptor is installed — the client works normally without it.
+>
+> **Token calls are logged without their response body.** A bearer client's token call goes through Logbook like any other call, the request (Logbook's default filters mask the form's `client_secret`, `password` and `refresh_token`), the status and the headers included, but the token endpoint's response body is never handed to Logbook: `<token response body withheld; bearer-auth.log-response-body: true logs it>` stands in its place. An identity provider may echo the request form, and a token answer holds the token itself. This holds on every client type and does not depend on, or change, your Logbook configuration; the client's own calls keep their bodies. `bearer-auth.log-response-body: true` brings the body back, for debugging a token endpoint.
 
 ### Bearer Auth Client (Minimal)
 
@@ -223,6 +225,7 @@ opentmf:
         num-retries: 1
         headers:                        # sent on the token call only
           x-api-key: myApiKey
+        log-response-body: false        # true: Logbook shows the token answer; debugging only
         form-data:
           username: user
           password: pass
@@ -743,10 +746,13 @@ What to check when upgrading:
   already failed at start (`BindValidationException` on `bearerAuth.tokenUrl`); without one it was
   built and failed at its first token call (a `NullPointerException`). `bearer-auth.use-mock: true`
   needs no token URL and is accepted as before.
-- **Logbook** (when on the classpath and `logging-enabled`, the default) logs the token call like
-  any other, the response body included, through its own body filters; these mask tokens in a JSON
-  answer but not, say, an echoed `client_secret`. Add a body filter for such fields if your
-  identity provider echoes the request.
+- **Logbook's TRACE line of a token call no longer shows the response body** (when Logbook is on
+  the classpath and `logging-enabled`, the default): a marker stands in its place; the request,
+  the status and the headers of the line are unchanged, and the client's own calls keep their
+  bodies. On 2.5.1 the line carried the whole answer through Logbook's own filters, which mask a
+  JSON answer's tokens but not, for example, an echoed `client_secret` (measured on all three
+  client types, a `400` and a `200` echoing it). `bearer-auth.log-response-body: true` restores
+  the 2.5.1 line.
 
 ### Token request bounds (`bearer-auth.request-timeout` / `response-timeout` / `num-retries`)
 

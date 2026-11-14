@@ -96,7 +96,7 @@ public class ReactiveClientRegistrar {
   public WebClient createWebClient(String connectionName, String resilienceName,
       ClientProperties properties, ConnectionProvider connectionProvider) {
     return build(connectionName, resilienceName, properties, connectionProvider,
-        WebClientConfigUtil::createWebClient);
+        WebClientConfigUtil::createWebClient, false);
   }
 
   /**
@@ -108,17 +108,14 @@ public class ReactiveClientRegistrar {
   public WebClient createTokenWebClient(String connectionName, String resilienceName,
       ClientProperties properties, ConnectionProvider connectionProvider) {
     return build(connectionName, resilienceName, TokenCallProperties.of(properties),
-        connectionProvider, WebClientConfigUtil::createTokenWebClient);
+        connectionProvider, WebClientConfigUtil::createTokenWebClient, true);
   }
 
   private WebClient build(String connectionName, String resilienceName,
       ClientProperties properties, ConnectionProvider connectionProvider,
-      WebClientAssembler assembler) {
+      WebClientAssembler assembler, boolean tokenCalls) {
     try {
-      Consumer<Connection> logbookHandler =
-          (properties.isLoggingEnabled() && logbookSupport != null)
-              ? logbookSupport::addHandler
-              : null;
+      Consumer<Connection> logbookHandler = logbookHandler(properties, tokenCalls);
       var httpClient = WebClientConfigUtil.httpClient(
           logbookHandler, properties, connectionProvider);
       var webClient = assembler.assemble(webClientBuilder, httpClient, properties);
@@ -127,6 +124,22 @@ public class ReactiveClientRegistrar {
     } catch (Exception e) {
       throw new IllegalArgumentException("Can't create WebClient for " + connectionName, e);
     }
+  }
+
+  /**
+   * The Logbook handler of a client's connections, or {@code null} without logging. The token
+   * calls' handler withholds the token endpoint's response body unless
+   * {@code bearer-auth.log-response-body} is set.
+   */
+  private @Nullable Consumer<Connection> logbookHandler(ClientProperties properties,
+      boolean tokenCalls) {
+    if (!properties.isLoggingEnabled() || logbookSupport == null) {
+      return null;
+    }
+    var bearer = properties.getBearerAuth();
+    return tokenCalls && (bearer == null || !bearer.isLogResponseBody())
+        ? logbookSupport::addTokenCallHandler
+        : logbookSupport::addHandler;
   }
 
   @FunctionalInterface

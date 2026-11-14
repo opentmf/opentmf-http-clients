@@ -14,6 +14,7 @@ import org.opentmf.client.bearer.sync.SyncBearerTokenServiceImpl;
 import org.opentmf.client.bearer.sync.SyncBearerTokenServiceMockImpl;
 import org.opentmf.client.bearer.sync.SyncTokenClientImpl;
 import org.opentmf.client.bearer.util.TokenCacheUtil;
+import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.model.ClientType;
 import org.opentmf.client.common.util.BearerAuthRequirements;
@@ -49,15 +50,18 @@ public class RestClientRegistrar {
   private final ConfigurableListableBeanFactory factory;
   private final Map<ClientType, RestTemplateFactory> restTemplateFactories;
   private final ObjectProvider<TokenFetchMeters> tokenFetchMetersProvider;
+  private final @Nullable RestLogbookSupport logbookSupport;
 
   @Autowired
   public RestClientRegistrar(ConfigurableApplicationContext ctx,
       Map<String, RestTemplateFactory> factoryBeans,
-      ObjectProvider<TokenFetchMeters> tokenFetchMetersProvider) {
+      ObjectProvider<TokenFetchMeters> tokenFetchMetersProvider,
+      ObjectProvider<RestLogbookSupport> logbookSupportProvider) {
     this.factory = ctx.getBeanFactory();
     this.restTemplateFactories = factoryBeans.values().stream()
         .collect(Collectors.toMap(this::detectType, f -> f));
     this.tokenFetchMetersProvider = tokenFetchMetersProvider;
+    this.logbookSupport = logbookSupportProvider.getIfAvailable();
   }
 
   public void registerBeans(String clientId, ClientType clientType, ClientProperties properties) {
@@ -152,8 +156,9 @@ public class RestClientRegistrar {
     }
     BearerAuthRequirements.requireTokenUrl(clientId, properties);
     var tokenFactory = tokenRequestFactory(clientId, restTemplate, properties);
-    var syncTokenClient = new SyncTokenClientImpl(tokenRestClient(restClient, tokenFactory),
-        properties, bearerConfig, tokenFetchListener(clientId));
+    var syncTokenClient = new SyncTokenClientImpl(
+        tokenRestClient(restClient, tokenFactory, bearerConfig), properties, bearerConfig,
+        tokenFetchListener(clientId));
     var cache = TokenCacheUtil.buildTokenCache();
     return new SyncBearerTokenServiceImpl(bearerConfig, cache, syncTokenClient);
   }
@@ -200,13 +205,19 @@ public class RestClientRegistrar {
    * The client's {@code RestClient} without its fixed-headers interceptor: the fixed headers
    * belong to the API calls and never reach the token endpoint. Everything else is shared — the
    * request factory (so the connection pool; with the token request's own timeouts when
-   * {@code tokenFactory} is given), the contributions, resilience and Logbook.
+   * {@code tokenFactory} is given), the contributions, resilience and Logbook — the latter
+   * withholding the token endpoint's response body unless {@code bearer-auth.log-response-body}
+   * is set.
    */
-  private static RestClient tokenRestClient(RestClient restClient,
-      @Nullable ClientHttpRequestFactory tokenFactory) {
+  private RestClient tokenRestClient(RestClient restClient,
+      @Nullable ClientHttpRequestFactory tokenFactory, BearerAuthConfig bearerConfig) {
     var builder = restClient.mutate()
-        .requestInterceptors(interceptors ->
-            interceptors.removeIf(FixedHeadersClientHttpRequestInterceptor.class::isInstance));
+        .requestInterceptors(interceptors -> {
+          interceptors.removeIf(FixedHeadersClientHttpRequestInterceptor.class::isInstance);
+          if (logbookSupport != null && !bearerConfig.isLogResponseBody()) {
+            logbookSupport.useTokenCallInterceptor(interceptors);
+          }
+        });
     if (tokenFactory != null) {
       builder.requestFactory(tokenFactory);
     }

@@ -39,7 +39,20 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   token call with a `NullPointerException` (measured on 2.5.1). `bearer-auth.use-mock: true`
   needs no token URL, as before.
 
+- **Logbook logs a token call without the token endpoint's response body.** With Logbook on the
+  classpath and `logging-enabled` (the default), the TRACE line of a token call showed the
+  identity provider's whole answer through Logbook's own body filters, which mask the tokens of a
+  JSON answer but not, say, an echoed `client_secret`. A marker,
+  `<token response body withheld; bearer-auth.log-response-body: true logs it>`, now stands in
+  its place; nothing else of the line changes (the request with Logbook's own masking, the status,
+  the headers), and the client's own calls keep their bodies. **Measured on the released 2.5.1
+  jars against 2.5.2**, on all three client types, an identity provider echoing `client_secret` in
+  a `400` and in a `200`: on 2.5.1 the echo is in the TRACE line, on 2.5.2 it is not. Scoped to the
+  token calls; it neither relies on nor changes the application's Logbook configuration.
+
 ### Added
+- `bearer-auth.log-response-body` (default `false`): `true` gives the token calls' log line its
+  response body again, for debugging a token endpoint.
 - `BearerTokenException.getTokenUrl()` / `getOauthError()` and the constructor
   `BearerTokenException(URI tokenUrl, HttpStatusCode status, String oauthError)`; the existing
   constructors are unchanged.

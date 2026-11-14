@@ -1,5 +1,6 @@
 package org.opentmf.client.starter.reactive;
 
+import org.opentmf.client.starter.TokenCallLogbook;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Bean;
@@ -14,7 +15,9 @@ public class ReactiveLogbookAutoConfiguration {
   @Bean
   ReactiveLogbookSupport reactiveLogbookSupport(ObjectProvider<Logbook> logbookProvider) {
     Logbook logbook = logbookProvider.getIfAvailable(Logbook::create);
+    var tokenCallLogbook = new TokenCallLogbook(logbook);
     return new ReactiveLogbookSupport(
-        conn -> conn.addHandlerLast(new LogbookClientHandler(logbook)));
+        conn -> conn.addHandlerLast(new LogbookClientHandler(logbook)),
+        conn -> conn.addHandlerLast(new LogbookClientHandler(tokenCallLogbook)));
   }
 }
