@@ -64,6 +64,14 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   jars against 2.5.2**, on all three client types, an identity provider echoing `client_secret` in
   a `400` and in a `200`: on 2.5.1 the echo is in the TRACE line, on 2.5.2 it is not. Scoped to the
   token calls; it neither relies on nor changes the application's Logbook configuration.
+- **Documented: what `response-timeout` bounds on each client type**, which no earlier release
+  said correctly (the Javadoc called it a read timeout on all client types). The behaviour itself
+  is unchanged. On `jdk` it is one deadline for the whole exchange, counted from the send, so a
+  body that is still arriving when it passes is cut, a long download included. On `apache` and
+  `netty` it is silence per read, so a stalled body is cut but a body that keeps arriving is
+  never cut. The README says what the caller sees when a body is cut, and how a caller bounds a
+  whole call; `ResponseTimeoutIT` measures both a stalled and a trickling peer on every client
+  type.
 
 ### Added
 - `bearer-auth.log-response-body` (default `false`): `true` gives the token calls' log line its
