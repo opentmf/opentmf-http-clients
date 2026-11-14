@@ -51,8 +51,12 @@ public class ClientProperties {
   private Duration requestTimeout = Duration.ofSeconds(30);
 
   /**
-   * Time to wait for response data (read timeout) on all client types. Netty additionally applies
-   * it to the TLS handshake and to the proxy CONNECT exchange. Default 45s.
+   * How long to wait for the answer; what it bounds depends on the client type. On JDK it is one
+   * deadline for the whole exchange, counted from the send: the headers and the whole body must
+   * arrive within it, so a download that takes longer fails. On Apache and Netty it is silence
+   * per read: each wait for data, the headers and every part of the body, may last this long,
+   * so a stalled peer is cut but a body that keeps arriving is never cut. Netty additionally
+   * applies it to the TLS handshake and to the proxy CONNECT exchange. Default 45s.
    */
   private Duration responseTimeout = Duration.ofSeconds(45);
 

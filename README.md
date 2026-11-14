@@ -119,7 +119,7 @@ Each client can override this via a per-client `client-type` property. The three
 | `max-connections` | int | `200` | Maximum number of connections in the pool |
 | `max-connections-per-route` | int | *(max-connections)* | Per-route connection limit (Apache HttpClient only, ignored by others) |
 | `request-timeout` | Duration | `30s` | Connect timeout |
-| `response-timeout` | Duration | `45s` | Read / response timeout |
+| `response-timeout` | Duration | `45s` | How long to wait for the answer: one deadline for the whole exchange on `jdk`, silence per read on `apache` and `netty` — see below |
 | `connection-idle-timeout` | Duration | `4m` | How long idle connections stay in the pool before eviction |
 | `num-retries` | int | `3` | Maximum retry count (used by `executeWithRetry` / `WebClientUtil.retry`) |
 | `retry-wait-duration` | Duration | `5s` | Base wait between retries (exponential backoff) |
@@ -147,6 +147,19 @@ Duration values accept Spring Boot duration strings: `500ms`, `3s`, `1m`, `PT30S
 > - **Netty** (`client-type: netty`): sets Reactor Netty's `.compress(true/false)`. When enabled, the client sends `Accept-Encoding: gzip, deflate` and decompresses responses transparently.
 > - **Apache** (`client-type: apache`): Apache HttpClient 5 enables gzip/deflate decompression by default. When `compression-enabled: false`, the library calls `disableContentCompression()`.
 > - **JDK** (`client-type: jdk`): the library adds an interceptor that sets `Accept-Encoding: gzip` on outgoing requests and transparently decompresses gzipped responses. When `compression-enabled: false`, the interceptor is not installed.
+
+> **What `response-timeout` bounds per client type** (the same holds for `bearer-auth.response-timeout` on the token call):
+> - **JDK** (`client-type: jdk`): **one deadline for the whole exchange**, counted from the moment the request is sent: the wait for the headers and the reading of the body both count against it (Spring's `JdkClientHttpRequest` closes the body stream when the deadline passes). A peer that sends its headers and then stalls is cut at `response-timeout` after the send — and so is a body that is still arriving, however steadily: a download that legitimately takes longer than `response-timeout` fails. Set `response-timeout` above the longest whole call you expect, downloads included.
+> - **Apache** (`client-type: apache`) and **Netty** (`client-type: netty`): **silence per read**. Each wait for data, for the headers and for every part of the body, may last up to `response-timeout`, and the clock starts again with every byte that arrives. A peer that stalls is cut after `response-timeout` without a byte; a body that keeps arriving, however slowly, is never cut, so a long download is not limited, and neither is a peer that trickles a byte just inside the timeout.
+>
+> What the caller sees when a body is cut (measured, `ResponseTimeoutIT`):
+> - **JDK:** a `RestClientException` ("Error while extracting response for type […]") caused by an `IOException` (on JDK 17: `closed`, caused by `fixed content-length: 64, bytes received: 8`). The same with Logbook writing the call: Logbook's own read of the body fails first, is logged as a WARN ("Unable to log response") and dropped, and the caller's read then fails the same way.
+> - **Apache:** a `RestClientException` ("Error while extracting response for type […]") caused by a `SocketTimeoutException` ("Read timed out"), with Logbook writing the call or not. (Logbook reads the body inside the exchange to log it, and drops a failure of that read with a WARN, "Unable to log response"; the library's Logbook interceptor raises that same failure when the caller reads the body. Up to 2.5.1 the caller found the end of the stream instead, so on `apache` with Logbook at `TRACE` a body cut by the timeout came back as a `200` without a body.)
+> - **Netty:** a `WebClientResponseException` caused by Netty's `ReadTimeoutException`, with Logbook writing or not ("200 OK from GET … but response failed with cause: io.netty.handler.timeout.ReadTimeoutException").
+>
+> **On `netty` a cut body arrives as a `WebClientResponseException` that carries the answer's own status, a `200`:** code that reads that exception as "the server answered with an error" misreads a timeout. Tell them apart by the cause (`ReadTimeoutException`) or by `getStatusCode().isError()`, never by the exception type alone.
+>
+> **A caller that must bound a whole call:** on `jdk`, `response-timeout` already is that bound. On `netty`, put the Mono's own `.timeout(Duration)` on the call: it cancels the exchange and closes the connection when it passes. On `apache` the library sets no bound on the whole call: a peer that keeps sending, however slowly, holds it as long as it sends.
 
 > **Logbook HTTP logging:**
 > When `logging-enabled: true` (the default), the library wires [Zalando Logbook](https://github.com/zalando/logbook) to log HTTP requests and responses. Logbook is **fully optional** — the starters do **not** pull it in transitively. To enable HTTP logging, add the appropriate Logbook dependency to your project:
@@ -789,7 +802,7 @@ Three keys under `bearer-auth` give the token request bounds of its own:
 | Key | Default | The token request's own… |
 |---|---|---|
 | `bearer-auth.request-timeout` | the client's `request-timeout` | time allowed for obtaining a usable connection (same meaning per client type as the client's key) |
-| `bearer-auth.response-timeout` | the client's `response-timeout` | time to wait for the token endpoint's answer |
+| `bearer-auth.response-timeout` | the client's `response-timeout` | time to wait for the token endpoint's answer (same meaning per client type as the client's key: [one deadline on `jdk`, silence per read on `apache` and `netty`](#per-client-properties)) |
 | `bearer-auth.num-retries` | the client's `num-retries` | number of retries of a retryable status (`503`, `429`, …) |
 
 Each one, when unset, is the client's own value, so a client that sets none of them behaves

@@ -35,7 +35,6 @@ import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.zalando.logbook.spring.LogbookClientHttpRequestInterceptor;
 
 /**
  * The application's {@link OutboundInterceptorContribution} beans run FIRST — in their order,
@@ -162,7 +161,7 @@ class OutboundInterceptorContributionIT {
           assertThat(restTemplate.getInterceptors().get(2))
               .isInstanceOf(ResilienceClientHttpRequestInterceptor.class);
           assertThat(restTemplate.getInterceptors()).last()
-              .isInstanceOf(LogbookClientHttpRequestInterceptor.class);
+              .isInstanceOf(BodyReadFailureGuard.class);
           assertThat(restTemplate.getForObject("/api/hello", String.class)).isEqualTo("hello");
           assertThat(SEEN).containsExactly(
               "early /api/hello X-Custom=null", "late /api/hello X-Custom=null");
@@ -248,11 +247,11 @@ class OutboundInterceptorContributionIT {
     catalogClient("jdk").run(context -> {
       assertThat(context).hasNotFailed();
       var interceptors = ((RestTemplate) context.getBean("catalogRestTemplate")).getInterceptors();
-      // resilience, gzip, fixed headers, Logbook
+      // resilience, gzip, fixed headers, Logbook (behind its body-read guard)
       assertThat(interceptors).hasSize(4);
       assertThat(interceptors.get(0)).isInstanceOf(ResilienceClientHttpRequestInterceptor.class);
       assertThat(interceptors.get(1)).isSameAs(GzipClientHttpRequestInterceptor.instance());
-      assertThat(interceptors.get(3)).isInstanceOf(LogbookClientHttpRequestInterceptor.class);
+      assertThat(interceptors.get(3)).isInstanceOf(BodyReadFailureGuard.class);
 
       var restClientChain = new ArrayList<ClientHttpRequestInterceptor>();
       ((RestClient) context.getBean("catalogRestClient")).mutate()

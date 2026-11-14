@@ -113,7 +113,8 @@ public class BearerAuthConfig {
 
   /**
    * The token request's own {@code response-timeout}: the time to wait for the token endpoint's
-   * answer. When unset, the token request uses the client's {@code response-timeout}, as it
+   * answer, with the same meaning per client type as the client's key (one deadline for the
+   * whole exchange on JDK, silence per read on Apache and Netty). When unset, the token request uses the client's {@code response-timeout}, as it
    * always has. A token request that fails at the transport level (a timeout included) is retried
    * once at once, so an identity provider that does not answer holds a token retrieval for twice
    * this value. Set it when the client is tuned for a slow backend: an identity provider answers
