@@ -13,6 +13,7 @@ import org.opentmf.client.common.model.AuthType;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.model.ClientType;
 import org.opentmf.client.common.resilience.ResilienceRegistries;
+import org.opentmf.client.common.util.BearerAuthRequirements;
 import org.opentmf.client.reactive.service.api.TokenService;
 import org.opentmf.client.reactive.util.WebClientConfigUtil;
 import org.opentmf.client.rest.service.api.SyncTokenService;
@@ -171,6 +172,7 @@ public class HttpClientRegistry implements DisposableBean {
   }
 
   private Entry buildSyncEntry(String name, ClientType type, ClientProperties properties) {
+    BearerAuthRequirements.requireTokenUrl(name, properties);
     var restTemplate = restRegistrar.createRestTemplate(name, type, properties);
     var requestFactory = rawRequestFactory(restTemplate);
     var restClient = restRegistrar.createRestClient(restTemplate);
@@ -195,6 +197,7 @@ public class HttpClientRegistry implements DisposableBean {
   }
 
   private Entry buildReactiveEntry(String name, ClientProperties properties) {
+    BearerAuthRequirements.requireTokenUrl(name, properties);
     var connectionProvider = WebClientConfigUtil.buildConnectionProvider(name, properties);
     var webClient = reactiveRegistrar.createWebClient(name, name, properties, connectionProvider);
     ConnectionProvider tokenConnectionProvider = null;

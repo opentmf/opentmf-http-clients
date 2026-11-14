@@ -114,8 +114,19 @@ class BearerTokenServiceIT {
     var badTokenClient = new BearerTokenClientImpl(clientProperties, badConfig, webClient);
     var badService = new BearerTokenServiceImpl(badConfig, tokenCache, badTokenClient);
 
+    // a WebClient without the library's error filter: the status reaches the token client's own
+    // handler, and the identity provider's body is withheld there too
     StepVerifier.create(badService.getToken())
-        .expectError(BearerTokenException.class)
+        .expectErrorSatisfies(e -> {
+          assertThat(e).isExactlyInstanceOf(BearerTokenException.class);
+          var tokenFailure = (BearerTokenException) e;
+          assertThat(tokenFailure.getStatusCode().is4xxClientError()).isTrue();
+          assertThat(tokenFailure.getTokenUrl()).isEqualTo(tokenUrl);
+          assertThat(tokenFailure.getResponseBody()).isNull();
+          assertThat(tokenFailure.getHeaders()).isNotNull();
+          assertThat(tokenFailure.getMessage())
+              .startsWith("Bearer token request to " + tokenUrl + " answered ");
+        })
         .verify();
   }
 

@@ -8,16 +8,21 @@ import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import lombok.extern.slf4j.Slf4j;
+import org.opentmf.client.bearer.exception.BearerTokenException;
 import org.opentmf.client.bearer.exception.BearerTokenTransportException;
 import org.opentmf.client.bearer.observe.TokenFetchListener;
 import org.opentmf.client.bearer.observe.TokenFetchListener.Outcome;
 import org.opentmf.client.bearer.util.BearerTokenUtil;
+import org.opentmf.client.bearer.util.TokenStatusFailures;
 import org.opentmf.client.bearer.util.TransportFailures;
+import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.util.TokenCallProperties;
+import org.opentmf.client.common.util.TokenUrls;
 import org.opentmf.client.rest.util.SyncClientUtil;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.node.ObjectNode;
@@ -29,8 +34,10 @@ import tools.jackson.databind.node.ObjectNode;
  * statuses from the token endpoint are additionally retried per the client's
  * {@code num-retries} (or {@code bearer-auth.num-retries} when set) / {@code retry-wait-duration}
  * / {@code max-retry-after} — the same contract
- * as the reactive twin — and each of those attempts owns its own single transport retry; other
- * status errors pass through unchanged. Every settled mint is reported to the
+ * as the reactive twin — and each of those attempts owns its own single transport retry. Every
+ * error status from the token endpoint, a 404 included, surfaces as a
+ * {@link BearerTokenException}: the status and headers kept, the body withheld. Every settled
+ * mint is reported to the
  * {@link TokenFetchListener} and, on success, logged at INFO with the issuer URL. A success
  * answer without a usable token fails with {@code BearerTokenResponseException} and is not
  * retried.
@@ -81,8 +88,9 @@ public class SyncTokenClientImpl {
 
   public ObjectNode getToken(URI tokenUrl, MultiValueMap<String, String> formData) {
     var scope = formData.get(SCOPE);
+    var shownUrl = TokenUrls.shown(tokenUrl);
     log.debug("Will retrieve a new bearer token (sync) from url: {}, scope: {}, username: {}",
-        tokenUrl, scope, formData.get(config.getUsernameField()));
+        shownUrl, scope, formData.get(config.getUsernameField()));
     long start = System.nanoTime();
     var attempts = new AtomicInteger();
 
@@ -90,12 +98,12 @@ public class SyncTokenClientImpl {
       var token = SyncClientUtil.executeWithRetry(
           () -> exchangeWithTransportRetry(tokenUrl, formData, attempts), numRetries,
           retryWaitDuration, 0.0d, maxRetryAfter);
-      log.info("Bearer token minted from {} (scope: {}, attempt {}, {} ms)", tokenUrl, scope,
+      log.info("Bearer token minted from {} (scope: {}, attempt {}, {} ms)", shownUrl, scope,
           attempts.get(), TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
-      listener.onTokenFetch(tokenUrl, attempts.get() == 1 ? Outcome.OK : Outcome.RETRIED);
+      listener.onTokenFetch(shownUrl, attempts.get() == 1 ? Outcome.OK : Outcome.RETRIED);
       return token;
     } catch (RuntimeException e) {
-      listener.onTokenFetch(tokenUrl, Outcome.FAILED);
+      listener.onTokenFetch(shownUrl, Outcome.FAILED);
       throw e;
     }
   }
@@ -114,7 +122,8 @@ public class SyncTokenClientImpl {
           throw new BearerTokenTransportException(tokenUrl, attempt, e);
         }
         log.warn("Bearer token fetch from {} failed at the transport level ({}); retrying once",
-            tokenUrl, TransportFailures.describeChain(e));
+            TokenUrls.shown(tokenUrl),
+            TokenUrls.scrubbed(TransportFailures.describeChain(e), tokenUrl));
       }
     }
   }
@@ -132,7 +141,13 @@ public class SyncTokenClientImpl {
     }
 
     // read as text, so the status is kept and an unusable answer fails by name, not by parser
-    var answer = requestSpec.retrieve().toEntity(String.class);
+    ResponseEntity<String> answer;
+    try {
+      answer = requestSpec.retrieve().toEntity(String.class);
+    } catch (OpenTmfClientResponseException e) {
+      // an error status: the token call's own failure, its body withheld
+      throw TokenStatusFailures.toTokenFailure(tokenUrl, e);
+    }
     return BearerTokenUtil.readTokenResponse(tokenUrl, answer.getStatusCode(), answer.getBody(),
         config.getTokenField());
   }

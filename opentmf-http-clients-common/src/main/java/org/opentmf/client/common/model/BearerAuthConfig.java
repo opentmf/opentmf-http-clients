@@ -130,4 +130,13 @@ public class BearerAuthConfig {
    */
   @PositiveOrZero
   private @Nullable Integer numRetries;
+
+  /**
+   * Whether the request log (Logbook, with the client's {@code logging-enabled}) shows the token
+   * endpoint's response body. Default false: a marker stands in its place, because an identity
+   * provider may echo the request form (the client secret, a password, a refresh token) and a
+   * token answer holds the token itself; the request, the status and the headers of a token call
+   * are logged as for any call. Set it true to debug a token endpoint, never in production.
+   */
+  private boolean logResponseBody = false;
 }

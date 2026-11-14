@@ -13,6 +13,7 @@ import org.opentmf.client.bearer.reactive.BearerTokenServiceImpl;
 import org.opentmf.client.bearer.reactive.BearerTokenServiceMockImpl;
 import org.opentmf.client.bearer.util.TokenCacheUtil;
 import org.opentmf.client.common.model.ClientProperties;
+import org.opentmf.client.common.util.BearerAuthRequirements;
 import org.opentmf.client.common.util.TokenCallProperties;
 import org.opentmf.client.common.resilience.ResilienceRegistries;
 import org.opentmf.client.reactive.resilience.ReactiveResilience;
@@ -73,6 +74,7 @@ public class ReactiveClientRegistrar {
   }
 
   public void registerBeans(String clientId, ClientProperties properties) {
+    BearerAuthRequirements.requireTokenUrl(clientId, properties);
     if (properties.isLoggingEnabled() && logbookSupport == null) {
       log.warn("Client '{}' has logging-enabled: true, but no Logbook bean found. "
           + "Add org.zalando:logbook-netty to your classpath to enable HTTP logging.", clientId);
@@ -94,7 +96,7 @@ public class ReactiveClientRegistrar {
   public WebClient createWebClient(String connectionName, String resilienceName,
       ClientProperties properties, ConnectionProvider connectionProvider) {
     return build(connectionName, resilienceName, properties, connectionProvider,
-        WebClientConfigUtil::createWebClient);
+        WebClientConfigUtil::createWebClient, false);
   }
 
   /**
@@ -106,17 +108,14 @@ public class ReactiveClientRegistrar {
   public WebClient createTokenWebClient(String connectionName, String resilienceName,
       ClientProperties properties, ConnectionProvider connectionProvider) {
     return build(connectionName, resilienceName, TokenCallProperties.of(properties),
-        connectionProvider, WebClientConfigUtil::createTokenWebClient);
+        connectionProvider, WebClientConfigUtil::createTokenWebClient, true);
   }
 
   private WebClient build(String connectionName, String resilienceName,
       ClientProperties properties, ConnectionProvider connectionProvider,
-      WebClientAssembler assembler) {
+      WebClientAssembler assembler, boolean tokenCalls) {
     try {
-      Consumer<Connection> logbookHandler =
-          (properties.isLoggingEnabled() && logbookSupport != null)
-              ? logbookSupport::addHandler
-              : null;
+      Consumer<Connection> logbookHandler = logbookHandler(properties, tokenCalls);
       var httpClient = WebClientConfigUtil.httpClient(
           logbookHandler, properties, connectionProvider);
       var webClient = assembler.assemble(webClientBuilder, httpClient, properties);
@@ -125,6 +124,22 @@ public class ReactiveClientRegistrar {
     } catch (Exception e) {
       throw new IllegalArgumentException("Can't create WebClient for " + connectionName, e);
     }
+  }
+
+  /**
+   * The Logbook handler of a client's connections, or {@code null} without logging. The token
+   * calls' handler withholds the token endpoint's response body unless
+   * {@code bearer-auth.log-response-body} is set.
+   */
+  private @Nullable Consumer<Connection> logbookHandler(ClientProperties properties,
+      boolean tokenCalls) {
+    if (!properties.isLoggingEnabled() || logbookSupport == null) {
+      return null;
+    }
+    var bearer = properties.getBearerAuth();
+    return tokenCalls && (bearer == null || !bearer.isLogResponseBody())
+        ? logbookSupport::addTokenCallHandler
+        : logbookSupport::addHandler;
   }
 
   @FunctionalInterface
@@ -154,6 +169,7 @@ public class ReactiveClientRegistrar {
     if (bearerConfig.isUseMock()) {
       return new BearerTokenServiceMockImpl();
     }
+    BearerAuthRequirements.requireTokenUrl(clientId, properties);
     var tokenWebClient = suppliedTokenWebClient != null
         ? suppliedTokenWebClient
         : createTokenWebClient(clientId + "Token", clientId, properties,

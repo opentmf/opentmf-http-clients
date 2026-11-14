@@ -159,6 +159,8 @@ Duration values accept Spring Boot duration strings: `500ms`, `3s`, `1m`, `PT30S
 > `logbook-spring-boot-autoconfigure` transitively provides `logbook-spring`, `logbook-core`, and the `Logbook` bean auto-configuration. For reactive clients, `logbook-netty` must be added separately as it's not included transitively.
 >
 > If Logbook is not on the classpath, a WARN is logged at startup and no logging interceptor is installed — the client works normally without it.
+>
+> **Token calls are logged without their response body.** A bearer client's token call goes through Logbook like any other call, the request (Logbook's default filters mask the form's `client_secret`, `password` and `refresh_token`), the status and the headers included, but the token endpoint's response body is never handed to Logbook: `<token response body withheld; bearer-auth.log-response-body: true logs it>` stands in its place. An identity provider may echo the request form, and a token answer holds the token itself. This holds on every client type and does not depend on, or change, your Logbook configuration; the client's own calls keep their bodies. `bearer-auth.log-response-body: true` brings the body back, for debugging a token endpoint.
 
 ### Bearer Auth Client (Minimal)
 
@@ -223,6 +225,7 @@ opentmf:
         num-retries: 1
         headers:                        # sent on the token call only
           x-api-key: myApiKey
+        log-response-body: false        # true: Logbook shows the token answer; debugging only
         form-data:
           username: user
           password: pass
@@ -657,9 +660,25 @@ and the library treats it that way:
   `org.opentmf.client.bearer.exception.BearerTokenTransportException` (`tokenUrl`, `attempts`,
   cause = the last failure; the message carries the same cause chain as the `WARN`). It is deliberately *not* an `OpenTmfClientResponseException` — there is
   no HTTP status to report — so the retry utilities never retry it further. Map it to **503**
-  (identity provider unreachable) in your error advice; a status-bearing
-  `OpenTmfClientResponseException` / `BearerTokenException` from the token endpoint means the
+  (identity provider unreachable) in your error advice; a `BearerTokenException` (below) means the
   identity provider *answered* with an error and is typically mapped to **502**.
+- **An error status from the token endpoint** — any 4xx or 5xx, a `404` included — throws
+  `org.opentmf.client.bearer.exception.BearerTokenException`, on every client type (`jdk`,
+  `apache`, `netty`), static and dynamic clients alike. It is an `OpenTmfClientResponseException`,
+  so a catch of that type behaves as for any answered call; **catch `BearerTokenException` (and
+  its sibling `BearerTokenResponseException`, below) first** to tell a failed token call from a
+  failed call to the service the token was for — a token
+  endpoint's `400`, `404` or `410` is not that service's answer. It carries `tokenUrl`, the status,
+  the response headers, a parsed `Retry-After`, and `oauthError`, the OAuth 2.0 error code of the
+  answer (RFC 6749 §5.2 `error`, e.g. `invalid_client`; `null` unless it is a lower-case code of
+  letters, digits and underscores of at most 64 characters):
+  `Bearer token request to <token-url> answered 401 Unauthorized (error=invalid_client)`. The
+  identity provider's **body is withheld** — `getResponseBody()` is `null`, the message never
+  quotes it, no cause carries it, no log line of the library prints it — because a provider may
+  echo the request form, which can hold the client secret, a password or a refresh token;
+  `error_description` is withheld with it. A `404` is this type, not
+  `OpenTmfClientNotFoundException`: it says the token URL is wrong, not that a resource is absent.
+  Retryable statuses are retried exactly as before (below).
 - **A success answer without a usable token** — an empty body (`204` included), a body that is not
   a JSON object, or one whose `token-field` is missing, `null`, not a string or blank — throws
   `org.opentmf.client.bearer.exception.BearerTokenResponseException`, an
@@ -687,6 +706,72 @@ Token clients, sync and reactive alike, additionally retry retryable **statuses*
 single transport retry. `num-retries: 0` turns the status retry off. When wiring
 `SyncTokenClientImpl` by hand, pass the `ClientProperties` to get it — the constructors without
 them keep the transport retry only.
+
+### A failed token call since 2.5.2: what changes for users of 2.5.1
+
+Measured on the released 2.5.1 jars and on 2.5.2, with the same cells: a client of each type
+(`jdk`, `apache`, `netty`) whose token endpoint answers `400`, `404`, `410` or `503` with a JSON
+body holding `error`, `error_description` and an echo of a credential.
+
+| | 2.5.1 (released) | 2.5.2 |
+|---|---|---|
+| type, `400` / `410` / `503` | `OpenTmfClientResponseException` | `BearerTokenException` (an `OpenTmfClientResponseException`) |
+| type, `404` | `OpenTmfClientNotFoundException` | `BearerTokenException` — **no longer** an `OpenTmfClientNotFoundException` |
+| `getResponseBody()` | the whole body, the echo included | `null` |
+| message | `HTTP 400 Bad Request: <error_description>` | `Bearer token request to <token-url> answered 400 Bad Request (error=invalid_client)` |
+| status, headers, `Retry-After` | kept | kept, the same |
+| token requests made | `503`: 1 + `num-retries`; others: 1 | the same |
+
+What to check when upgrading:
+
+- **A catch of `OpenTmfClientResponseException`** catches a failed token call exactly as before.
+  Code that read the token endpoint's body from it (`getResponseBody()`, or the description in
+  `getMessage()`) gets `null` and the new message; use `getOauthError()` for the error code.
+- **A token endpoint's `404`** no longer reaches a catch of `OpenTmfClientNotFoundException` (or a
+  `404` mapped to "not found" by type): it is a misconfigured token URL, not an absent resource.
+  Code that maps a `404` by its *status* (`getRawStatusCode() == 404`) still sees `404`; catch
+  `BearerTokenException` ahead of it.
+- **A catch of `BearerTokenException`** now fires for every error status from the token
+  endpoint, on every client type; until 2.5.2 a failed token call raised it only on a reactive
+  token client built by hand over a `WebClient` without the library's error filter (there its
+  message held the whole body; now it is the message above).
+- **Every token call that got an answer and failed is one of two types**, both
+  `OpenTmfClientResponseException`s and siblings, as in 2.5.1: `BearerTokenException` (an error
+  status) and `BearerTokenResponseException` (a success status without a usable token). A consumer
+  that tells a failed token call from the target's answer names both;
+  `BearerTokenTransportException` (no answer) stays outside the family.
+- **A client with `bearer-auth` but no `bearer-auth.token-url`** is refused when it is built —
+  at context start, and by the dynamic-client registry — with
+  `Client '<id>' has bearer-auth but no bearer-auth.token-url. …`. A `bearer-auth` block is bound
+  as soon as any of its keys is set, so a sub-key alone (`bearer-auth.num-retries: 0` in a jar's
+  `application.yml`) makes a bearer client. With a bean validator on the classpath such a client
+  already failed at start (`BindValidationException` on `bearerAuth.tokenUrl`); without one it was
+  built and failed at its first token call (a `NullPointerException`). `bearer-auth.use-mock: true`
+  needs no token URL and is accepted as before.
+- **A `bearer-auth.token-url` that is not an absolute `http` or `https` URL with a host** — a
+  misspelt scheme (`htps://…`), a space in the host, an empty host (`http:///token`) — is refused
+  in the same places, by name and without quoting the URL:
+  `Client '<id>' has a bearer-auth.token-url that is not an absolute http or https URL with a
+  host.` On 2.5.1 such a client started and failed at its first token call: an untyped
+  `IllegalArgumentException` on `jdk`, a `BearerTokenTransportException` after a second, useless
+  attempt on `apache` and `netty` (measured).
+- **A user part of the token URL is no longer shown.** A token URL such as
+  `http://user:password@idp/token` is accepted as before and works where it worked (`jdk`, `netty`:
+  no client type sends the part; `apache` refuses such a URL at the call, as before), but the
+  library never shows the part: not in its log lines (the `INFO` of a minted token, the `DEBUG`
+  before a fetch, the transport `WARN`), not in the messages or `getTokenUrl()` of
+  `BearerTokenException`, `BearerTokenResponseException` and `BearerTokenTransportException`, not
+  to a `TokenFetchListener`, not in a stack trace (with such a URL a
+  `BearerTokenTransportException` chains no cause, which would quote the URL; its message keeps
+  the cause chain without the part). On 2.5.1 the `INFO` line of every mint printed it
+  (measured). Put a credential in `client-id` / `client-secret` or `form-data`, never in the URL.
+- **Logbook's TRACE line of a token call no longer shows the response body** (when Logbook is on
+  the classpath and `logging-enabled`, the default): a marker stands in its place; the request,
+  the status and the headers of the line are unchanged, and the client's own calls keep their
+  bodies. On 2.5.1 the line carried the whole answer through Logbook's own filters, which mask a
+  JSON answer's tokens but not, for example, an echoed `client_secret` (measured on all three
+  client types, a `400` and a `200` echoing it). `bearer-auth.log-response-body: true` restores
+  the 2.5.1 line.
 
 ### Token request bounds (`bearer-auth.request-timeout` / `response-timeout` / `num-retries`)
 

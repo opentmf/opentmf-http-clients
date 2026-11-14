@@ -26,6 +26,10 @@ public interface TokenFetchListener {
     FAILED
   }
 
+  /**
+   * @param tokenUrl the token endpoint, without a user part of the configured URL
+   * @param outcome  how the mint ended
+   */
   void onTokenFetch(URI tokenUrl, Outcome outcome);
 
   /** A listener that ignores every notification. */
