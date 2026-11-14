@@ -38,6 +38,21 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   client; with a bean validator it already failed at start, without one it failed at its first
   token call with a `NullPointerException` (measured on 2.5.1). `bearer-auth.use-mock: true`
   needs no token URL, as before.
+- **A `bearer-auth.token-url` that is not an absolute `http` or `https` URL with a host is
+  refused when the client is built**, by name and without quoting the URL (`Client '<id>' has a
+  bearer-auth.token-url that is not an absolute http or https URL with a host.`): a misspelt
+  scheme, a space in the host, an empty host. Measured on 2.5.1: such a client started and
+  failed at its first token call, with an untyped `IllegalArgumentException` on `jdk` and a
+  `BearerTokenTransportException` after a second attempt on `apache` and `netty`.
+- **A user part of the token URL is no longer shown.** `http://user:password@idp/token` is
+  accepted and works as before (on `jdk` and `netty` the part is never sent; `apache` refuses it
+  at the call, as before), but the log lines of the token calls (`INFO` minted, `DEBUG` before a
+  fetch, transport `WARN`), the messages and `getTokenUrl()` of `BearerTokenException`,
+  `BearerTokenResponseException` and `BearerTokenTransportException`, and the URL handed to a
+  `TokenFetchListener` show the URL without it. Measured on 2.5.1: the `INFO` line of every mint
+  printed it. With such a URL a `BearerTokenTransportException` chains no cause, since the HTTP
+  client's own exceptions quote the URL with the part; its message keeps the cause chain (class
+  names and texts) without it.
 
 - **Logbook logs a token call without the token endpoint's response body.** With Logbook on the
   classpath and `logging-enabled` (the default), the TRACE line of a token call showed the
@@ -58,6 +73,8 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   constructors are unchanged.
 - `TokenStatusFailures` (`opentmf-http-clients-bearer-provider`): turns a status error of a token
   call into its `BearerTokenException`, for code that wires the token clients by hand.
+- `TokenUrls` (`opentmf-http-clients-common`): `isUsable(URI)` and `shown(URI)`, how the library
+  judges and shows a token URL.
 - `BearerAuthRequirements.requireTokenUrl(clientId, properties)`
   (`opentmf-http-clients-common`): the refusal above, for code that builds clients by hand.
 - **A bearer token request can have bounds of its own:** `bearer-auth.request-timeout`,

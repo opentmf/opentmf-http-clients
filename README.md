@@ -748,6 +748,23 @@ What to check when upgrading:
   already failed at start (`BindValidationException` on `bearerAuth.tokenUrl`); without one it was
   built and failed at its first token call (a `NullPointerException`). `bearer-auth.use-mock: true`
   needs no token URL and is accepted as before.
+- **A `bearer-auth.token-url` that is not an absolute `http` or `https` URL with a host** — a
+  misspelt scheme (`htps://…`), a space in the host, an empty host (`http:///token`) — is refused
+  in the same places, by name and without quoting the URL:
+  `Client '<id>' has a bearer-auth.token-url that is not an absolute http or https URL with a
+  host.` On 2.5.1 such a client started and failed at its first token call: an untyped
+  `IllegalArgumentException` on `jdk`, a `BearerTokenTransportException` after a second, useless
+  attempt on `apache` and `netty` (measured).
+- **A user part of the token URL is no longer shown.** A token URL such as
+  `http://user:password@idp/token` is accepted as before and works where it worked (`jdk`, `netty`:
+  no client type sends the part; `apache` refuses such a URL at the call, as before), but the
+  library never shows the part: not in its log lines (the `INFO` of a minted token, the `DEBUG`
+  before a fetch, the transport `WARN`), not in the messages or `getTokenUrl()` of
+  `BearerTokenException`, `BearerTokenResponseException` and `BearerTokenTransportException`, not
+  to a `TokenFetchListener`, not in a stack trace (with such a URL a
+  `BearerTokenTransportException` chains no cause, which would quote the URL; its message keeps
+  the cause chain without the part). On 2.5.1 the `INFO` line of every mint printed it
+  (measured). Put a credential in `client-id` / `client-secret` or `form-data`, never in the URL.
 - **Logbook's TRACE line of a token call no longer shows the response body** (when Logbook is on
   the classpath and `logging-enabled`, the default): a marker stands in its place; the request,
   the status and the headers of the line are unchanged, and the client's own calls keep their

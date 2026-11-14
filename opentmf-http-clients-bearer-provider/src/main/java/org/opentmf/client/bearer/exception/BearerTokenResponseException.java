@@ -4,6 +4,7 @@ import java.io.Serial;
 import java.net.URI;
 import lombok.Getter;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
+import org.opentmf.client.common.util.TokenUrls;
 import org.springframework.http.HttpStatusCode;
 
 /**
@@ -45,7 +46,7 @@ public class BearerTokenResponseException extends OpenTmfClientResponseException
     }
   }
 
-  /** The token endpoint that answered. */
+  /** The token endpoint that answered, without a user part of the configured URL. */
   private final URI tokenUrl;
 
   /** The configured {@code bearer-auth.token-field} the token was expected in. */
@@ -55,10 +56,10 @@ public class BearerTokenResponseException extends OpenTmfClientResponseException
 
   public BearerTokenResponseException(URI tokenUrl, HttpStatusCode statusCode, String tokenField,
       Reason reason) {
-    super(statusCode, "Bearer token response from " + tokenUrl + " (" + statusCode + ") "
-        + reason.describe(tokenField) + "; expected a JSON object with a '" + tokenField
-        + "' string");
-    this.tokenUrl = tokenUrl;
+    super(statusCode, "Bearer token response from " + TokenUrls.shown(tokenUrl) + " ("
+        + statusCode + ") " + reason.describe(tokenField) + "; expected a JSON object with a '"
+        + tokenField + "' string");
+    this.tokenUrl = TokenUrls.shown(tokenUrl);
     this.tokenField = tokenField;
     this.reason = reason;
   }

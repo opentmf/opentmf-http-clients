@@ -5,6 +5,7 @@ import java.net.URI;
 import lombok.Getter;
 import org.jspecify.annotations.Nullable;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
+import org.opentmf.client.common.util.TokenUrls;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 
@@ -33,7 +34,10 @@ public class BearerTokenException extends OpenTmfClientResponseException {
   @Serial
   private static final long serialVersionUID = 4L;
 
-  /** The token endpoint that answered; {@code null} on the constructors without one. */
+  /**
+   * The token endpoint that answered, without a user part of the configured URL;
+   * {@code null} on the constructors without one.
+   */
   private final @Nullable URI tokenUrl;
 
   /**
@@ -69,9 +73,9 @@ public class BearerTokenException extends OpenTmfClientResponseException {
    */
   public BearerTokenException(URI tokenUrl, HttpStatusCode statusCode,
       @Nullable String oauthError) {
-    super(statusCode, "Bearer token request to " + tokenUrl + " answered " + describe(statusCode)
-        + (oauthError == null ? "" : " (error=" + oauthError + ")"));
-    this.tokenUrl = tokenUrl;
+    super(statusCode, "Bearer token request to " + TokenUrls.shown(tokenUrl) + " answered "
+        + describe(statusCode) + (oauthError == null ? "" : " (error=" + oauthError + ")"));
+    this.tokenUrl = TokenUrls.shown(tokenUrl);
     this.oauthError = oauthError;
   }
 

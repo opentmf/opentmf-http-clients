@@ -19,6 +19,7 @@ import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.util.TokenCallProperties;
+import org.opentmf.client.common.util.TokenUrls;
 import org.opentmf.client.rest.util.SyncClientUtil;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -87,8 +88,9 @@ public class SyncTokenClientImpl {
 
   public ObjectNode getToken(URI tokenUrl, MultiValueMap<String, String> formData) {
     var scope = formData.get(SCOPE);
+    var shownUrl = TokenUrls.shown(tokenUrl);
     log.debug("Will retrieve a new bearer token (sync) from url: {}, scope: {}, username: {}",
-        tokenUrl, scope, formData.get(config.getUsernameField()));
+        shownUrl, scope, formData.get(config.getUsernameField()));
     long start = System.nanoTime();
     var attempts = new AtomicInteger();
 
@@ -96,12 +98,12 @@ public class SyncTokenClientImpl {
       var token = SyncClientUtil.executeWithRetry(
           () -> exchangeWithTransportRetry(tokenUrl, formData, attempts), numRetries,
           retryWaitDuration, 0.0d, maxRetryAfter);
-      log.info("Bearer token minted from {} (scope: {}, attempt {}, {} ms)", tokenUrl, scope,
+      log.info("Bearer token minted from {} (scope: {}, attempt {}, {} ms)", shownUrl, scope,
           attempts.get(), TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
-      listener.onTokenFetch(tokenUrl, attempts.get() == 1 ? Outcome.OK : Outcome.RETRIED);
+      listener.onTokenFetch(shownUrl, attempts.get() == 1 ? Outcome.OK : Outcome.RETRIED);
       return token;
     } catch (RuntimeException e) {
-      listener.onTokenFetch(tokenUrl, Outcome.FAILED);
+      listener.onTokenFetch(shownUrl, Outcome.FAILED);
       throw e;
     }
   }
@@ -120,7 +122,8 @@ public class SyncTokenClientImpl {
           throw new BearerTokenTransportException(tokenUrl, attempt, e);
         }
         log.warn("Bearer token fetch from {} failed at the transport level ({}); retrying once",
-            tokenUrl, TransportFailures.describeChain(e));
+            TokenUrls.shown(tokenUrl),
+            TokenUrls.scrubbed(TransportFailures.describeChain(e), tokenUrl));
       }
     }
   }

@@ -19,6 +19,7 @@ import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.util.HttpClientUtil;
 import org.opentmf.client.common.util.TokenCallProperties;
+import org.opentmf.client.common.util.TokenUrls;
 import org.opentmf.client.reactive.util.WebClientUtil;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
@@ -68,8 +69,9 @@ public class BearerTokenClientImpl implements BearerTokenClient {
   @Override
   public Mono<ObjectNode> retrieveToken(URI tokenUrl, MultiValueMap<String, String> formData) {
     var scope = formData.get(SCOPE);
+    var shownUrl = TokenUrls.shown(tokenUrl);
     log.debug("Will retrieve a new bearer token from url: {}, scope: {}, username: {}",
-        tokenUrl, scope, formData.get(bearerConfig.getUsernameField()));
+        shownUrl, scope, formData.get(bearerConfig.getUsernameField()));
     return Mono.defer(() -> {
       var attempts = new AtomicInteger();
       long start = System.nanoTime();
@@ -79,17 +81,18 @@ public class BearerTokenClientImpl implements BearerTokenClient {
               .filter(BearerTokenClientImpl::isTransportFailure)
               .doBeforeRetry(signal -> log.warn(
                   "Bearer token fetch from {} failed at the transport level ({}); retrying once",
-                  tokenUrl, TransportFailures.describeChain(signal.failure())))
+                  shownUrl,
+                  TokenUrls.scrubbed(TransportFailures.describeChain(signal.failure()), tokenUrl)))
               .onRetryExhaustedThrow((spec, signal) -> new BearerTokenTransportException(
                   tokenUrl, (int) signal.totalRetries() + 1, signal.failure())))
           .retryWhen(WebClientUtil.retry(properties.getNumRetries(),
               properties.getRetryWaitDuration(), 0.0d, properties.getMaxRetryAfter()))
           .doOnSuccess(token -> {
-            log.info("Bearer token minted from {} (scope: {}, attempt {}, {} ms)", tokenUrl,
+            log.info("Bearer token minted from {} (scope: {}, attempt {}, {} ms)", shownUrl,
                 scope, attempts.get(), TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
-            listener.onTokenFetch(tokenUrl, attempts.get() == 1 ? Outcome.OK : Outcome.RETRIED);
+            listener.onTokenFetch(shownUrl, attempts.get() == 1 ? Outcome.OK : Outcome.RETRIED);
           })
-          .doOnError(e -> listener.onTokenFetch(tokenUrl, Outcome.FAILED));
+          .doOnError(e -> listener.onTokenFetch(shownUrl, Outcome.FAILED));
     });
   }
 
