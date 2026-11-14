@@ -16,6 +16,7 @@ import org.opentmf.client.bearer.sync.SyncTokenClientImpl;
 import org.opentmf.client.bearer.util.TokenCacheUtil;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.model.ClientType;
+import org.opentmf.client.common.util.BearerAuthRequirements;
 import org.opentmf.client.common.util.TokenCallProperties;
 import org.opentmf.client.rest.service.api.RestTemplateFactory;
 import org.opentmf.client.rest.service.api.SyncTokenService;
@@ -60,6 +61,7 @@ public class RestClientRegistrar {
   }
 
   public void registerBeans(String clientId, ClientType clientType, ClientProperties properties) {
+    BearerAuthRequirements.requireTokenUrl(clientId, properties);
     var restTemplate = createRestTemplate(clientId, clientType, properties);
     var restClient = createRestClient(restTemplate);
     registerIfAbsent(clientId + REST_TEMPLATE, restTemplate);
@@ -148,6 +150,7 @@ public class RestClientRegistrar {
     if (bearerConfig.isUseMock()) {
       return new SyncBearerTokenServiceMockImpl();
     }
+    BearerAuthRequirements.requireTokenUrl(clientId, properties);
     var tokenFactory = tokenRequestFactory(clientId, restTemplate, properties);
     var syncTokenClient = new SyncTokenClientImpl(tokenRestClient(restClient, tokenFactory),
         properties, bearerConfig, tokenFetchListener(clientId));
