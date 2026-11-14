@@ -9,15 +9,15 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 
 /**
- * Thrown when the token endpoint answered, but with no token the library can use: an error
- * status (any 4xx or 5xx, a 404 included), or — as the subclass
- * {@link BearerTokenResponseException} — a success status without a usable token.
+ * Thrown when the token endpoint answered with an error status (any 4xx or 5xx, a 404 included).
+ * A success status without a usable token is its sibling {@link BearerTokenResponseException};
+ * together the two are every token call that got an answer and failed.
  *
  * <p>It is an {@link OpenTmfClientResponseException}, so a catch of that type behaves as for any
- * other answered call; catch this type first to tell a failed token call from a failed call to
- * the service the token was for. A token endpoint answering 404 is this type, not an
- * {@code OpenTmfClientNotFoundException}: it says the token URL is wrong, not that the resource
- * the caller asked for is absent.</p>
+ * other answered call; catch this type (and {@link BearerTokenResponseException}) first to tell a
+ * failed token call from a failed call to the service the token was for. A token endpoint
+ * answering 404 is this type, not an {@code OpenTmfClientNotFoundException}: it says the token
+ * URL is wrong, not that the resource the caller asked for is absent.</p>
  *
  * <p>The identity provider's response body is withheld: {@link #getResponseBody()} is
  * {@code null} and the message never quotes it, because a provider may echo the request form,
@@ -69,15 +69,8 @@ public class BearerTokenException extends OpenTmfClientResponseException {
    */
   public BearerTokenException(URI tokenUrl, HttpStatusCode statusCode,
       @Nullable String oauthError) {
-    this(tokenUrl, statusCode, "Bearer token request to " + tokenUrl + " answered "
-        + describe(statusCode) + (oauthError == null ? "" : " (error=" + oauthError + ")"),
-        oauthError);
-  }
-
-  /** For subclasses: a failure of the token call at the given endpoint, with its own message. */
-  protected BearerTokenException(URI tokenUrl, HttpStatusCode statusCode, String message,
-      @Nullable String oauthError) {
-    super(statusCode, message);
+    super(statusCode, "Bearer token request to " + tokenUrl + " answered " + describe(statusCode)
+        + (oauthError == null ? "" : " (error=" + oauthError + ")"));
     this.tokenUrl = tokenUrl;
     this.oauthError = oauthError;
   }

@@ -665,8 +665,9 @@ and the library treats it that way:
 - **An error status from the token endpoint** — any 4xx or 5xx, a `404` included — throws
   `org.opentmf.client.bearer.exception.BearerTokenException`, on every client type (`jdk`,
   `apache`, `netty`), static and dynamic clients alike. It is an `OpenTmfClientResponseException`,
-  so a catch of that type behaves as for any answered call; **catch `BearerTokenException` first**
-  to tell a failed token call from a failed call to the service the token was for — a token
+  so a catch of that type behaves as for any answered call; **catch `BearerTokenException` (and
+  its sibling `BearerTokenResponseException`, below) first** to tell a failed token call from a
+  failed call to the service the token was for — a token
   endpoint's `400`, `404` or `410` is not that service's answer. It carries `tokenUrl`, the status,
   the response headers, a parsed `Retry-After`, and `oauthError`, the OAuth 2.0 error code of the
   answer (RFC 6749 §5.2 `error`, e.g. `invalid_client`; `null` unless it is a lower-case code of
@@ -680,9 +681,8 @@ and the library treats it that way:
   Retryable statuses are retried exactly as before (below).
 - **A success answer without a usable token** — an empty body (`204` included), a body that is not
   a JSON object, or one whose `token-field` is missing, `null`, not a string or blank — throws
-  `org.opentmf.client.bearer.exception.BearerTokenResponseException`, a `BearerTokenException`
-  (so an `OpenTmfClientResponseException`) carrying `tokenUrl`, the status, `tokenField` and a
-  `reason`
+  `org.opentmf.client.bearer.exception.BearerTokenResponseException`, an
+  `OpenTmfClientResponseException` carrying `tokenUrl`, the status, `tokenField` and a `reason`
   (`EMPTY_BODY` | `NOT_A_JSON_OBJECT` | `FIELD_MISSING` | `FIELD_NOT_A_STRING` | `FIELD_BLANK`):
   `Bearer token response from <token-url> (200 OK) has no 'access_token' field; expected a JSON
   object with a 'access_token' string`. The body never appears — not in the message, not in a
@@ -731,13 +731,15 @@ What to check when upgrading:
   `404` mapped to "not found" by type): it is a misconfigured token URL, not an absent resource.
   Code that maps a `404` by its *status* (`getRawStatusCode() == 404`) still sees `404`; catch
   `BearerTokenException` ahead of it.
-- **A catch of `BearerTokenException`** now fires for every failed token call that got an answer,
-  on every client type; until 2.5.2 a failed token call raised it only on a reactive token client
-  built by hand over a `WebClient` without the library's error filter (there its message held the
-  whole body; now it is the message above).
-- **`BearerTokenResponseException` is now a `BearerTokenException`.** A catch of
-  `BearerTokenException` also catches it, and a `try` that catches `BearerTokenException` *before*
-  `BearerTokenResponseException` no longer compiles: put `BearerTokenResponseException` first.
+- **A catch of `BearerTokenException`** now fires for every error status from the token
+  endpoint, on every client type; until 2.5.2 a failed token call raised it only on a reactive
+  token client built by hand over a `WebClient` without the library's error filter (there its
+  message held the whole body; now it is the message above).
+- **Every token call that got an answer and failed is one of two types**, both
+  `OpenTmfClientResponseException`s and siblings, as in 2.5.1: `BearerTokenException` (an error
+  status) and `BearerTokenResponseException` (a success status without a usable token). A consumer
+  that tells a failed token call from the target's answer names both;
+  `BearerTokenTransportException` (no answer) stays outside the family.
 - **A client with `bearer-auth` but no `bearer-auth.token-url`** is refused when it is built —
   at context start, and by the dynamic-client registry — with
   `Client '<id>' has bearer-auth but no bearer-auth.token-url. …`. A `bearer-auth` block is bound

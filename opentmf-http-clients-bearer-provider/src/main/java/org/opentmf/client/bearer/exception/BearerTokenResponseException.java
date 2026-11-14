@@ -17,15 +17,14 @@ import org.springframework.http.HttpStatusCode;
  *
  * <p>{@link #getStatusCode()} is the success status the endpoint answered with, so it is not an
  * error status: map this failure on its type, not on its status. Like a status error from the
- * token endpoint it is a {@link BearerTokenException} — the identity provider answered, the
- * token call failed — and so an {@link OpenTmfClientResponseException}; it is never
- * retried.</p>
+ * token endpoint it is an {@link OpenTmfClientResponseException} — the identity provider
+ * answered — and it is never retried.</p>
  */
 @Getter
-public class BearerTokenResponseException extends BearerTokenException {
+public class BearerTokenResponseException extends OpenTmfClientResponseException {
 
   @Serial
-  private static final long serialVersionUID = 2L;
+  private static final long serialVersionUID = 1L;
 
   /** What is wrong with the answer; each names a shape, never a value. */
   public enum Reason {
@@ -46,6 +45,9 @@ public class BearerTokenResponseException extends BearerTokenException {
     }
   }
 
+  /** The token endpoint that answered. */
+  private final URI tokenUrl;
+
   /** The configured {@code bearer-auth.token-field} the token was expected in. */
   private final String tokenField;
 
@@ -53,9 +55,10 @@ public class BearerTokenResponseException extends BearerTokenException {
 
   public BearerTokenResponseException(URI tokenUrl, HttpStatusCode statusCode, String tokenField,
       Reason reason) {
-    super(tokenUrl, statusCode, "Bearer token response from " + tokenUrl + " (" + statusCode
-        + ") " + reason.describe(tokenField) + "; expected a JSON object with a '" + tokenField
-        + "' string", null);
+    super(statusCode, "Bearer token response from " + tokenUrl + " (" + statusCode + ") "
+        + reason.describe(tokenField) + "; expected a JSON object with a '" + tokenField
+        + "' string");
+    this.tokenUrl = tokenUrl;
     this.tokenField = tokenField;
     this.reason = reason;
   }

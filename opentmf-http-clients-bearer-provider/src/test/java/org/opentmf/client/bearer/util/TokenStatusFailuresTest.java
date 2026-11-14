@@ -70,6 +70,13 @@ class TokenStatusFailuresTest {
   }
 
   @Test
+  void aStatusFailureAlready_isKeptAsItIs() {
+    var already = new BearerTokenException(TOKEN_URL, HttpStatus.BAD_REQUEST, "invalid_grant");
+
+    assertThat(TokenStatusFailures.toTokenFailure(TOKEN_URL, already)).isSameAs(already);
+  }
+
+  @Test
   void aStatusWithoutAReasonPhrase_isNamedByItsNumber() {
     var failure = TokenStatusFailures.of(TOKEN_URL, HttpStatusCode.valueOf(599), null, null,
         null);

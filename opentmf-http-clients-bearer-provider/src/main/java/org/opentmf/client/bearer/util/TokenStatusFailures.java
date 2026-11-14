@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.opentmf.client.bearer.exception.BearerTokenException;
+import org.opentmf.client.bearer.exception.BearerTokenResponseException;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.commons.util.JacksonUtil;
 import org.springframework.http.HttpHeaders;
@@ -36,12 +37,14 @@ public final class TokenStatusFailures {
 
   /**
    * The token call's own failure for a status error the client's status handling raised; a
-   * failure that already is a {@link BearerTokenException} is returned as it is. The original
-   * exception is not chained as the cause: it carries the body.
+   * failure that already is a token failure ({@link BearerTokenException},
+   * {@link BearerTokenResponseException}) is returned as it is. The original exception is not
+   * chained as the cause: it carries the body.
    */
   public static OpenTmfClientResponseException toTokenFailure(URI tokenUrl,
       OpenTmfClientResponseException failure) {
-    if (failure instanceof BearerTokenException) {
+    if (failure instanceof BearerTokenException
+        || failure instanceof BearerTokenResponseException) {
       return failure;
     }
     return of(tokenUrl, failure.getStatusCode(), failure.getHeaders(), failure.getRetryAfter(),

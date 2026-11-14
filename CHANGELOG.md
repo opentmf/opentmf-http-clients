@@ -26,11 +26,11 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
     error code;
   - a token endpoint's `404` is a `BearerTokenException` and **no longer an
     `OpenTmfClientNotFoundException`** (2.5.1: it was): a wrong token URL, not an absent resource.
-  See the README's "A failed token call since 2.5.2".
-- **`BearerTokenResponseException` is a `BearerTokenException`** (it was a sibling under
-  `OpenTmfClientResponseException`), so one catch covers every token call that got an answer. A
-  `try` that catches `BearerTokenException` before `BearerTokenResponseException` no longer
-  compiles: put `BearerTokenResponseException` first.
+
+  Every token call that got an answer and failed is now one of two sibling types, both
+  `OpenTmfClientResponseException`s: `BearerTokenException` (an error status) and the unchanged
+  `BearerTokenResponseException` (a success status without a usable token); a consumer that tells
+  them from the target's answer names both. See the README's "A failed token call since 2.5.2".
 - **A client with `bearer-auth` but no `bearer-auth.token-url` is refused when it is built**, by
   name (`Client '<id>' has bearer-auth but no bearer-auth.token-url. …`), at context start and in
   the dynamic-client registry, whether or not a bean validator is on the classpath. A

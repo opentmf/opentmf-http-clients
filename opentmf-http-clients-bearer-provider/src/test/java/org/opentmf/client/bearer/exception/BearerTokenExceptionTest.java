@@ -70,12 +70,11 @@ class BearerTokenExceptionTest {
   }
 
   @Test
-  void anUnusableSuccessAnswer_isATokenFailureToo() {
+  void anUnusableSuccessAnswer_isASibling_bothInTheResponseFamily() {
     var ex = new BearerTokenResponseException(URI.create("http://idp/token"), HttpStatus.OK,
         "access_token", Reason.FIELD_MISSING);
-    assertThat(ex).isInstanceOf(BearerTokenException.class)
+    assertThat(ex).isNotInstanceOf(BearerTokenException.class)
         .isInstanceOf(OpenTmfClientResponseException.class);
     assertThat(ex.getTokenUrl()).isEqualTo(URI.create("http://idp/token"));
-    assertThat(ex.getOauthError()).isNull();
   }
 }
