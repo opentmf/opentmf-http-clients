@@ -14,7 +14,6 @@ class ExchangeTimeoutsTest {
     assertThat(ExchangeTimeouts.exceeded(Duration.ofSeconds(3), null))
         .isExactlyInstanceOf(SocketTimeoutException.class)
         .hasMessage("exchange-timeout of 3000 ms passed before the response was fully received")
-        .hasMessageStartingWith(ExchangeTimeouts.MESSAGE_PREFIX)
         .hasNoCause();
   }
 

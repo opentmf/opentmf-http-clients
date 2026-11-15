@@ -102,8 +102,10 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   fails for another transport reason arrives as a `WebClientRequestException` too, not as the
   `WebClientResponseException` with the answer's `200`. The bearer token call runs under the
   client's `exchange-timeout` as well. See the README's "What `exchange-timeout` bounds".
-- `ExchangeTimeouts` (`opentmf-http-clients-common`): the `SocketTimeoutException` an
-  `exchange-timeout` raises, and `MESSAGE_PREFIX`, the start of its message.
+- `ExchangeTimeouts` (`opentmf-http-clients-common`): builds the `SocketTimeoutException` an
+  `exchange-timeout` raises. Its message is informational, not a contract to match on: a caller
+  cannot tell from the exception which of `exchange-timeout` and `response-timeout` cut the
+  exchange.
 - **A bearer token request can have bounds of its own:** `bearer-auth.request-timeout`,
   `bearer-auth.response-timeout` and `bearer-auth.num-retries`. Until now a token request always
   ran on the client's own `request-timeout`, `response-timeout` and `num-retries`, so a client tuned

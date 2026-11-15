@@ -168,7 +168,11 @@ class ExchangeTimeoutIT {
             + " ms passed before the response was fully received");
   }
 
-  /** Never an answer: no status exception of either client. */
+  /**
+   * Never an answer: no status exception of either client. With the exact transport types and
+   * the {@code SocketTimeoutException} cause asserted per backend in every cell, this pins the
+   * shape a caller relies on against a later change.
+   */
   private static void assertNoStatusException(Throwable failure) {
     assertThat(failure).isNotInstanceOf(RestClientResponseException.class)
         .isNotInstanceOf(WebClientResponseException.class);
@@ -272,6 +276,7 @@ class ExchangeTimeoutIT {
 
       assertCutAround(outcome, exchangeMs);
       var failure = outcome.failure();
+      assertNoStatusException(failure);
       switch (clientType) {
         case "jdk" -> {
           assertThat(failure).isExactlyInstanceOf(ResourceAccessException.class);
