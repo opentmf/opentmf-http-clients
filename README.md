@@ -163,7 +163,7 @@ Duration values accept Spring Boot duration strings: `500ms`, `3s`, `1m`, `PT30S
 > **A caller that must bound a whole call:** set `exchange-timeout` (below). Without it, on `jdk` `response-timeout` already is that bound; on `netty` the Mono's own `.timeout(Duration)` on the call is one (it cancels the exchange and closes the connection when it passes); on `apache` there is none: a peer that keeps sending, however slowly, holds the call as long as it sends.
 
 > **What `exchange-timeout` bounds** (opt-in, unset by default; a client that does not set it behaves exactly as before):
-> - **The whole exchange**, from the moment the request is sent to the last byte of the body: the headers and the whole body must arrive within it. A body that keeps arriving is cut when it passes, however steadily it arrives.
+> - **The whole exchange**, from the moment the request is sent to the last byte of the body: the headers and the whole body must arrive within it. A body that keeps arriving is cut when it passes, however steadily it arrives. **It also cuts a slow but legitimate large download:** set it above the longest whole call you expect, downloads included.
 > - **Apache** and **Netty:** a bound of its own beside `response-timeout` (silence per read): whichever passes first cuts the exchange. A peer that stalls is still cut by `response-timeout` when that comes first; a peer that trickles is cut by `exchange-timeout`.
 > - **JDK:** `response-timeout` already is one deadline over the whole exchange; with both set, **the smaller of the two** is that deadline, because both mean the same thing there and the tighter promise is the one the caller asked for.
 > - **The token call** runs under the client's `exchange-timeout` too (there is no `bearer-auth` key of its own). A mint cut by it is retried once at once, as any transport failure of a mint, so it holds a token retrieval for about twice `exchange-timeout`.
@@ -1353,6 +1353,23 @@ import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 | `*_TOKEN_CONFIG_BASIC_AUTH_PASSWORD` | `*_BEARER_AUTH_CLIENT_SECRET` |
 | `*_TOKEN_CONFIG_CACHE_EXPIRY_SECONDS` | *(removed)* |
 | `*_TOKEN_CONFIG_FORM_DATA_*` | `*_BEARER_AUTH_FORM_DATA_*` |
+
+## Contributing
+
+Work goes to `develop` through a pull request.
+
+- **Build locally with JDK 17 and Maven 3.9.x**; the build refuses other versions. `mvn clean
+  verify` builds every module and runs the unit and integration tests and the per-module coverage
+  checks. No Docker is needed. CI builds with the repository's Maven wrapper, `./mvnw` (Maven
+  3.9.16, downloaded once and checked against its sha256); any local Maven 3.9.x works as well.
+- **CI:** GitHub Actions runs `./mvnw clean verify` on every pull request and every push to
+  `develop` (`.github/workflows/maven-build.yml`), on GitHub-hosted runners, with no secrets and
+  nothing published.
+- **A pull request merges only when both are green:**
+  - its CI run;
+  - the maintainers' local gate, which adds the Sonar analysis (no new issues, coverage of new
+    code) and, for a change of behaviour, a compatibility report measured against the released
+    version (see `docs/`).
 
 ## License
 
