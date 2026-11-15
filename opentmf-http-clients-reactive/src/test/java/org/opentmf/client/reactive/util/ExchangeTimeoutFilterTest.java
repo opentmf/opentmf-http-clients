@@ -33,6 +33,8 @@ import reactor.test.StepVerifier;
 class ExchangeTimeoutFilterTest {
 
   private static final Duration BOUND = Duration.ofMillis(300);
+  /** For the cells that must not be cut: far beyond a first call's warm-up in a fresh JVM. */
+  private static final Duration GENEROUS = Duration.ofSeconds(10);
   private static final ClientRequest REQUEST =
       ClientRequest.create(HttpMethod.GET, URI.create("http://peer/download")).build();
 
@@ -40,10 +42,10 @@ class ExchangeTimeoutFilterTest {
     return DefaultDataBufferFactory.sharedInstance.wrap(text.getBytes(StandardCharsets.US_ASCII));
   }
 
-  private static Mono<String> bodyThrough(Flux<DataBuffer> body) {
+  private static Mono<String> bodyThrough(Flux<DataBuffer> body, Duration bound) {
     ExchangeFunction peer = request -> Mono.just(ClientResponse.create(HttpStatus.OK)
         .body(body).build());
-    return new ExchangeTimeoutFilter(BOUND).filter(REQUEST, peer)
+    return new ExchangeTimeoutFilter(bound).filter(REQUEST, peer)
         .flatMap(response -> response.bodyToMono(String.class));
   }
 
@@ -68,14 +70,14 @@ class ExchangeTimeoutFilterTest {
   void aBodyThatKeepsArriving_isCut_atTheBound() {
     var trickle = Flux.interval(Duration.ofMillis(100)).map(i -> buffer("x"));
 
-    StepVerifier.create(bodyThrough(trickle))
+    StepVerifier.create(bodyThrough(trickle, BOUND))
         .expectErrorSatisfies(ExchangeTimeoutFilterTest::assertExchangeTimeout)
         .verify(Duration.ofSeconds(10));
   }
 
   @Test
   void aBodyInsideTheBound_passesUnchanged() {
-    StepVerifier.create(bodyThrough(Flux.just(buffer("abcd"), buffer("efgh"))))
+    StepVerifier.create(bodyThrough(Flux.just(buffer("abcd"), buffer("efgh")), GENEROUS))
         .expectNext("abcdefgh")
         .verifyComplete();
   }
@@ -84,7 +86,8 @@ class ExchangeTimeoutFilterTest {
   void aBodyThatFailsOnTheConnection_failsAsATransportFailure_notAsTheAnswer() {
     var reset = new IOException("Connection reset");
 
-    StepVerifier.create(bodyThrough(Flux.concat(Flux.just(buffer("ab")), Flux.error(reset))))
+    StepVerifier.create(
+        bodyThrough(Flux.concat(Flux.just(buffer("ab")), Flux.error(reset)), GENEROUS))
         .expectErrorSatisfies(failure -> {
           assertThat(failure).isExactlyInstanceOf(WebClientRequestException.class);
           assertThat(failure.getCause()).isSameAs(reset);
@@ -97,7 +100,7 @@ class ExchangeTimeoutFilterTest {
     var own = new WebClientRequestException(new IOException("reported by WebClient"),
         HttpMethod.GET, REQUEST.url(), new HttpHeaders());
 
-    StepVerifier.create(bodyThrough(Flux.error(own)))
+    StepVerifier.create(bodyThrough(Flux.error(own), GENEROUS))
         .expectErrorSatisfies(failure -> assertThat(failure).isSameAs(own))
         .verify(Duration.ofSeconds(10));
   }
