@@ -87,6 +87,20 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   judges and shows a token URL.
 - `BearerAuthRequirements.requireTokenUrl(clientId, properties)`
   (`opentmf-http-clients-common`): the refusal above, for code that builds clients by hand.
+- **`exchange-timeout`: an opt-in bound on the whole exchange**, from the send to the last byte
+  of the body. Unset by default, and **a client that does not set it behaves exactly as before**.
+  On `apache` and `netty`, where `response-timeout` is silence per read, it cuts a body that keeps
+  arriving, which nothing cut until now (measured: a body trickling one byte every 700 ms completes
+  after 4.9 s under a 2 s `response-timeout`; with a 3 s `exchange-timeout` it is cut at 3.0 s); a
+  stall is still cut by `response-timeout` when that comes first. On `jdk`, where
+  `response-timeout` already is one deadline for the whole exchange, the smaller of the two is
+  that deadline. A cut fails as the client's transport failure, never as an answer: on `apache` the
+  body-extraction `RestClientException` or the `ResourceAccessException`, on `netty` a
+  `WebClientRequestException`, each caused by the new `OpenTmfClientExchangeTimeoutException` (a
+  `SocketTimeoutException`); on `jdk` the JDK client's own timeout. With it set, a `netty` body that
+  fails for another transport reason arrives as a `WebClientRequestException` too, not as the
+  `WebClientResponseException` with the answer's `200`. The bearer token call runs under the
+  client's `exchange-timeout` as well. See the README's "What `exchange-timeout` bounds".
 - **A bearer token request can have bounds of its own:** `bearer-auth.request-timeout`,
   `bearer-auth.response-timeout` and `bearer-auth.num-retries`. Until now a token request always
   ran on the client's own `request-timeout`, `response-timeout` and `num-retries`, so a client tuned

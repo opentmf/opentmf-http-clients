@@ -14,6 +14,8 @@ import org.springframework.http.client.JdkClientHttpRequestFactory;
  * client's own HTTP client, so the token calls keep sharing its connection pool, TLS and proxy
  * settings; only the token request's timeouts differ.
  *
+ * <p>The token calls run under the client's {@code exchange-timeout} as well, when it is set.</p>
+ *
  * <ul>
  *   <li>Apache: the same {@code HttpClient}, with the token's connection-request and response
  *   timeouts applied per request.</li>
@@ -44,7 +46,7 @@ final class TokenRequestFactories {
       return null;
     }
     if (clientFactory instanceof HttpComponentsClientHttpRequestFactory apache) {
-      var factory = new HttpComponentsClientHttpRequestFactory(apache.getHttpClient());
+      var factory = ApacheRestTemplateFactory.requestFactory(apache.getHttpClient(), token);
       factory.setConnectionRequestTimeout(token.getRequestTimeout());
       factory.setReadTimeout(token.getResponseTimeout());
       return factory;
@@ -56,7 +58,7 @@ final class TokenRequestFactories {
         jdk.closeAlso(httpClient);
       }
       var factory = new JdkClientHttpRequestFactory(httpClient);
-      factory.setReadTimeout(token.getResponseTimeout());
+      factory.setReadTimeout(JdkRestTemplateFactory.readTimeout(token));
       return factory;
     }
     throw new IllegalStateException("bearer-auth.request-timeout / bearer-auth.response-timeout "

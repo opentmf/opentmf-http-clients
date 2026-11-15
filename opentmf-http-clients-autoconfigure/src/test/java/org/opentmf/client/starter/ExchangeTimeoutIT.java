@@ -21,6 +21,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.opentmf.client.bearer.exception.BearerTokenTransportException;
+import org.opentmf.client.common.exception.OpenTmfClientExchangeTimeoutException;
 import org.opentmf.client.reactive.service.api.TokenService;
 import org.opentmf.client.rest.service.api.SyncTokenService;
 import org.opentmf.client.starter.SlowPeer.Behaviour;
@@ -164,7 +165,10 @@ class ExchangeTimeoutIT {
   /** The cut was made by the exchange timeout: its own message, on a socket-timeout type. */
   private static void assertExchangeTimeoutCause(Throwable cause, long exchangeTimeoutMs) {
     assertThat(cause).isInstanceOf(SocketTimeoutException.class)
+        .isInstanceOf(OpenTmfClientExchangeTimeoutException.class)
         .hasMessageContaining("exchange-timeout of " + exchangeTimeoutMs + " ms");
+    assertThat(((OpenTmfClientExchangeTimeoutException) cause).getExchangeTimeout())
+        .isEqualTo(Duration.ofMillis(exchangeTimeoutMs));
   }
 
   /** Never an answer: no status exception of either client. */
@@ -181,13 +185,13 @@ class ExchangeTimeoutIT {
   @ParameterizedTest(name = "{0}, exchange-timeout {1} ms, logbook writing: {2}")
   @CsvSource({
       "jdk, 3000, false, 2000",
-      "jdk, 1500, false, 1500",
+      "jdk, 1000, false, 1000",
       "apache, 3000, false, 3000",
       "apache, 3000, true, 3000",
-      "apache, 1500, false, 1500",
+      "apache, 1000, false, 1000",
       "netty, 3000, false, 3000",
       "netty, 3000, true, 3000",
-      "netty, 1500, false, 1500"})
+      "netty, 1000, false, 1000"})
   void aBodyThatKeepsArriving_isCut_atTheExchangeTimeout(String clientType, long exchangeMs,
       boolean logbook, long expectedCutMs) {
     peer.behave(Behaviour.TRICKLE);

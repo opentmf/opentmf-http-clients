@@ -79,6 +79,21 @@ class ClientPropertiesValidatorTest {
   }
 
   @Test
+  void exchangeTimeout_unsetIsSound_nonPositiveIsFlagged() {
+    var properties = apacheDefaults();
+    assertThat(fields(ClientPropertiesValidator.validate(ClientType.APACHE, properties)))
+        .doesNotContain("exchange-timeout");
+
+    properties.setExchangeTimeout(Duration.ofSeconds(30));
+    assertThat(fields(ClientPropertiesValidator.validate(ClientType.APACHE, properties)))
+        .doesNotContain("exchange-timeout");
+
+    properties.setExchangeTimeout(Duration.ZERO);
+    assertThat(fields(ClientPropertiesValidator.validate(ClientType.APACHE, properties)))
+        .contains("exchange-timeout");
+  }
+
+  @Test
   void maxConnectionsPerRoute_crossChecks() {
     var tooHigh = apacheDefaults();
     tooHigh.setMaxConnectionsPerRoute(500);

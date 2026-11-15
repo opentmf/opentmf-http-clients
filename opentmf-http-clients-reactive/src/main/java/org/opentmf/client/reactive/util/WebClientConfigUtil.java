@@ -131,6 +131,10 @@ public final class WebClientConfigUtil {
         .clientConnector(new ReactorClientHttpConnector(httpClient))
         .filter(errorWrappingFilter())
         .exchangeStrategies(buildExchangeStrategies());
+    if (clientProperties.getExchangeTimeout() != null) {
+      // innermost: the bound starts at the send and covers the body as every filter reads it
+      builder.filter(new ExchangeTimeoutFilter(clientProperties.getExchangeTimeout()));
+    }
 
     if (StringUtils.hasText(clientProperties.getBaseUrl())) {
       builder.baseUrl(clientProperties.getBaseUrl());

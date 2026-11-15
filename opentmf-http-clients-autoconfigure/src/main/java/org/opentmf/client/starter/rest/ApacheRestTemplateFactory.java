@@ -2,6 +2,7 @@ package org.opentmf.client.starter.rest;
 
 import io.micrometer.observation.ObservationRegistry;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
@@ -106,7 +107,7 @@ public class ApacheRestTemplateFactory extends AbstractRestTemplateFactory {
 
       var httpClient = httpClientBuilder.build();
 
-      var restTemplate = new RestTemplate(new HttpComponentsClientHttpRequestFactory(httpClient));
+      var restTemplate = new RestTemplate(requestFactory(httpClient, properties));
       restTemplate.setErrorHandler(new OpenTmfResponseErrorHandler());
       applyObservationRegistry(restTemplate);
       addContributedInterceptors(restTemplate);
@@ -122,5 +123,17 @@ public class ApacheRestTemplateFactory extends AbstractRestTemplateFactory {
     } catch (Exception e) {
       throw new IllegalArgumentException("Failed to create Apache RestTemplate for " + clientId, e);
     }
+  }
+
+  /**
+   * The request factory over the given client: bounded by {@code exchange-timeout} when it is
+   * set, Spring's own otherwise, exactly as before.
+   */
+  static HttpComponentsClientHttpRequestFactory requestFactory(HttpClient httpClient,
+      ClientProperties properties) {
+    var exchangeTimeout = properties.getExchangeTimeout();
+    return exchangeTimeout == null
+        ? new HttpComponentsClientHttpRequestFactory(httpClient)
+        : new ExchangeTimeoutRequestFactory(httpClient, exchangeTimeout);
   }
 }
