@@ -1,7 +1,7 @@
 name: Maven build
 
 # Builds and runs the full test suite (unit and integration tests, the per-module coverage
-# checks) on every pull request and every push to develop, as `mvn clean verify` does locally,
+# checks) on every pull request and every push to develop, as `./mvnw clean verify` does locally,
 # without the Sonar profile. GitHub-hosted runners only. No secrets, no Sonar, nothing
 # published or deployed: snapshots and releases are not made here.
 
@@ -32,7 +32,9 @@ jobs:
         with:
           persist-credentials: false
 
-      # The build's enforcer accepts JDK 17 only, and Maven 3.9.x (the runner image's own).
+      # The build's enforcer accepts JDK 17 only, and Maven 3.9.x: the runner image's own Maven
+      # is 3.10, so the build runs the repository's Maven wrapper (./mvnw), pinned to 3.9.16 and
+      # checked against its sha256 (.mvn/wrapper/maven-wrapper.properties).
       - name: Set up JDK 17
         uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
@@ -41,4 +43,4 @@ jobs:
           cache: maven
 
       - name: Build and test
-        run: mvn --batch-mode --no-transfer-progress clean verify
+        run: ./mvnw --batch-mode --no-transfer-progress clean verify
