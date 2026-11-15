@@ -28,6 +28,7 @@ import org.opentmf.client.bearer.exception.BearerTokenResponseException;
 import org.opentmf.client.bearer.exception.BearerTokenResponseException.Reason;
 import org.opentmf.client.bearer.exception.BearerTokenTransportException;
 import org.opentmf.client.bearer.model.TokenEntry;
+import org.opentmf.client.common.model.ClientProperties;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -101,7 +102,7 @@ class TokenMintsTest {
   }
 
   @Test
-  void get_aCallerOfAFailedMint_getsItsOwnCopyOfTheFailure() throws Exception {
+  void get_aCallerOfAFailedMint_getsItsOwnCopyOfTheFailure() {
     var release = new CountDownLatch(1);
     var failure = status(503, Duration.ofSeconds(2));
     var owner = runAsync(() -> mints.get(KEY, () -> {
@@ -112,7 +113,7 @@ class TokenMintsTest {
     var joiner = joining(() -> mints.get(KEY, () -> entry("never")));
     release.countDown();
 
-    assertThatThrownBy(() -> owner.get(5, TimeUnit.SECONDS)).hasCauseReference(failure);
+    assertThatThrownBy(() -> owner.get(5, TimeUnit.SECONDS)).cause().isSameAs(failure);
     assertThatThrownBy(() -> joiner.get(5, TimeUnit.SECONDS))
         .cause()
         .isInstanceOf(BearerTokenException.class)
@@ -130,7 +131,7 @@ class TokenMintsTest {
   }
 
   @Test
-  void get_aMintThatEndsInAnError_releasesTheCallersWaitingForIt() throws Exception {
+  void get_aMintThatEndsInAnError_releasesTheCallersWaitingForIt() {
     var release = new CountDownLatch(1);
     var owner = runAsync(() -> mints.get(KEY, () -> {
       await(release);
@@ -338,14 +339,14 @@ class TokenMintsTest {
   @ParameterizedTest(name = "Retry-After {0}s -> {1}s")
   @CsvSource({"5, 10", "20, 20", "60, 30"})
   void memory_retryAfterLengthensIt_upToMaxRetryAfter(long retryAfter, long expected) {
-    assertThat(remembering.memoryFor(status(503, Duration.ofSeconds(retryAfter))))
+    assertThat(remembering.memoryFor(MEMORY, status(503, Duration.ofSeconds(retryAfter))))
         .isEqualTo(Duration.ofSeconds(expected));
   }
 
   @Test
   void memory_withoutRetryAfter_isTheConfiguredOne() {
-    assertThat(remembering.memoryFor(transport())).isEqualTo(MEMORY);
-    assertThat(remembering.memoryFor(status(503, null))).isEqualTo(MEMORY);
+    assertThat(remembering.memoryFor(MEMORY, transport())).isEqualTo(MEMORY);
+    assertThat(remembering.memoryFor(MEMORY, status(503, null))).isEqualTo(MEMORY);
   }
 
   @ParameterizedTest(name = "{0} -> {1}")
@@ -391,7 +392,8 @@ class TokenMintsTest {
 
   @Test
   void defaultMaxRetryAfter_isTheClientDefault() {
-    assertThat(TokenMints.DEFAULT_MAX_RETRY_AFTER).isEqualTo(Duration.ofSeconds(30));
+    assertThat(new ClientProperties().getMaxRetryAfter())
+        .isEqualTo(TokenMints.DEFAULT_MAX_RETRY_AFTER);
   }
 
   // ---- helpers

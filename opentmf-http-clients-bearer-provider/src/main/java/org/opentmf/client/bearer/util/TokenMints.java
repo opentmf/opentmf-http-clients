@@ -253,28 +253,28 @@ public final class TokenMints {
   }
 
   private void remember(String key, Throwable failure) {
-    if (failureMemory == null || !(failure instanceof RuntimeException runtime)
+    var configured = failureMemory;
+    if (configured == null || !(failure instanceof RuntimeException runtime)
         || !isRetryable(runtime)) {
       return;
     }
-    var memory = memoryFor(runtime);
+    var memory = memoryFor(configured, runtime);
     failures.put(key, new Remembered(runtime, ticker.read() + memory.toNanos()));
     log.warn("Bearer token mint failed ({}); every token request of this key fails at once for"
         + " {} ms (bearer-auth.failure-memory)", runtime.getMessage(), memory.toMillis());
   }
 
-  /** The configured memory, or the endpoint's {@code Retry-After} up to max-retry-after. */
-  Duration memoryFor(RuntimeException failure) {
-    var memory = failureMemory;
-    if (failure instanceof BearerTokenException e && e.getRetryAfter() != null) {
-      var asked = e.getRetryAfter().compareTo(maxRetryAfter) > 0
-          ? maxRetryAfter
-          : e.getRetryAfter();
-      if (asked.compareTo(memory) > 0) {
-        memory = asked;
-      }
+  /**
+   * The configured memory, or the endpoint's {@code Retry-After} when it asks for longer, up to
+   * max-retry-after.
+   */
+  Duration memoryFor(Duration configured, RuntimeException failure) {
+    var retryAfter = failure instanceof BearerTokenException e ? e.getRetryAfter() : null;
+    if (retryAfter == null) {
+      return configured;
     }
-    return memory;
+    var asked = retryAfter.compareTo(maxRetryAfter) > 0 ? maxRetryAfter : retryAfter;
+    return asked.compareTo(configured) > 0 ? asked : configured;
   }
 
   /** A transport failure, or a 5xx, 408 or 429 from the token endpoint. */
