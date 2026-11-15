@@ -67,9 +67,9 @@ public class ClientProperties {
    * On Apache and Netty, where {@code response-timeout} is silence per read, it is a bound of its
    * own, and whichever of the two passes first cuts the exchange. On JDK, where
    * {@code response-timeout} already is one deadline for the whole exchange, the smaller of the
-   * two is that deadline. A cut exchange fails as the client's transport failure caused by an
-   * {@code OpenTmfClientExchangeTimeoutException} on Apache and Netty, and as the JDK client's
-   * own timeout on JDK; never as an answer. The bearer token call runs under it too. Unset by
+   * two is that deadline. A cut exchange fails as the client's transport failure caused by a
+   * {@code SocketTimeoutException} ("exchange-timeout of ... ms passed ...") on Apache and Netty,
+   * and as the JDK client's own timeout on JDK; never as an answer. The bearer token call runs under it too. Unset by
    * default: no whole-exchange bound beyond {@code response-timeout}, as before.
    */
   private @Nullable Duration exchangeTimeout;

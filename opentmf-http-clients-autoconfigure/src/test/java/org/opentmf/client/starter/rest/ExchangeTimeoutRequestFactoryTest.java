@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.ConnectException;
 import java.net.ServerSocket;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
@@ -17,7 +18,6 @@ import java.util.concurrent.TimeUnit;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.core5.concurrent.Cancellable;
 import org.junit.jupiter.api.Test;
-import org.opentmf.client.common.exception.OpenTmfClientExchangeTimeoutException;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.starter.rest.ExchangeTimeoutRequestFactory.BoundedStream;
 import org.opentmf.client.starter.rest.ExchangeTimeoutRequestFactory.Deadline;
@@ -101,13 +101,13 @@ class ExchangeTimeoutRequestFactoryTest {
     var body = new BoundedStream(bytes("abcdefgh"), passed());
 
     assertThat(catchThrowable(body::read))
-        .isInstanceOf(OpenTmfClientExchangeTimeoutException.class)
+        .isExactlyInstanceOf(SocketTimeoutException.class)
         .hasMessage("exchange-timeout of 1 ms passed before the response was fully received")
         .hasNoCause();
     assertThat(catchThrowable(() -> body.read(new byte[4], 0, 4)))
-        .isInstanceOf(OpenTmfClientExchangeTimeoutException.class);
+        .isExactlyInstanceOf(SocketTimeoutException.class);
     assertThat(catchThrowable(() -> body.skip(1)))
-        .isInstanceOf(OpenTmfClientExchangeTimeoutException.class);
+        .isExactlyInstanceOf(SocketTimeoutException.class);
   }
 
   @Test
@@ -132,7 +132,7 @@ class ExchangeTimeoutRequestFactoryTest {
     var body = new BoundedStream(blocked, deadline);
 
     assertThat(catchThrowable(body::read))
-        .isInstanceOf(OpenTmfClientExchangeTimeoutException.class)
+        .isExactlyInstanceOf(SocketTimeoutException.class)
         .hasCause(closed);
   }
 
@@ -148,7 +148,7 @@ class ExchangeTimeoutRequestFactoryTest {
     var body = new BoundedStream(endedEarly, deadline);
 
     assertThat(catchThrowable(body::read))
-        .isInstanceOf(OpenTmfClientExchangeTimeoutException.class);
+        .isExactlyInstanceOf(SocketTimeoutException.class);
   }
 
   @Test
@@ -189,7 +189,7 @@ class ExchangeTimeoutRequestFactoryTest {
         HttpMethod.GET);
 
     assertThat(catchThrowable(request::execute)).isInstanceOf(IOException.class)
-        .isNotInstanceOf(OpenTmfClientExchangeTimeoutException.class);
+        .satisfies(failure -> assertThat(failure.getMessage()).doesNotContain("exchange-timeout"));
   }
 
   @Test

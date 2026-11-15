@@ -96,11 +96,14 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   `response-timeout` already is one deadline for the whole exchange, the smaller of the two is
   that deadline. A cut fails as the client's transport failure, never as an answer: on `apache` the
   body-extraction `RestClientException` or the `ResourceAccessException`, on `netty` a
-  `WebClientRequestException`, each caused by the new `OpenTmfClientExchangeTimeoutException` (a
-  `SocketTimeoutException`); on `jdk` the JDK client's own timeout. With it set, a `netty` body that
+  `WebClientRequestException`, each caused by a `SocketTimeoutException` that names the bound
+  ("exchange-timeout of 3000 ms passed before the response was fully received"); on `jdk` the
+  JDK client's own timeout. With it set, a `netty` body that
   fails for another transport reason arrives as a `WebClientRequestException` too, not as the
   `WebClientResponseException` with the answer's `200`. The bearer token call runs under the
   client's `exchange-timeout` as well. See the README's "What `exchange-timeout` bounds".
+- `ExchangeTimeouts` (`opentmf-http-clients-common`): the `SocketTimeoutException` an
+  `exchange-timeout` raises, and `MESSAGE_PREFIX`, the start of its message.
 - **A bearer token request can have bounds of its own:** `bearer-auth.request-timeout`,
   `bearer-auth.response-timeout` and `bearer-auth.num-retries`. Until now a token request always
   ran on the client's own `request-timeout`, `response-timeout` and `num-retries`, so a client tuned

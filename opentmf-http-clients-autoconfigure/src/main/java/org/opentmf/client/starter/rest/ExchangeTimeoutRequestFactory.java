@@ -14,7 +14,7 @@ import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.core5.concurrent.Cancellable;
 import org.apache.hc.core5.http.ClassicHttpRequest;
 import org.jspecify.annotations.Nullable;
-import org.opentmf.client.common.exception.OpenTmfClientExchangeTimeoutException;
+import org.opentmf.client.common.util.ExchangeTimeouts;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatusCode;
@@ -30,8 +30,8 @@ import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
  *
  * <p>When the bound passes, the request is cancelled: Apache closes its connection, which ends
  * a read blocked on the headers or on the body. Every read after that, and the read the cut
- * ended, raises {@link OpenTmfClientExchangeTimeoutException}; a body cut short never ends as a
- * clean end of stream. A response read to its end, or closed, before the bound disarms it.</p>
+ * ended, raises the bound's {@code SocketTimeoutException} ({@link ExchangeTimeouts}); a body
+ * cut short never ends as a clean end of stream. A response read to its end, or closed, before the bound disarms it.</p>
  */
 final class ExchangeTimeoutRequestFactory extends HttpComponentsClientHttpRequestFactory {
 
@@ -110,7 +110,7 @@ final class ExchangeTimeoutRequestFactory extends HttpComponentsClientHttpReques
     }
 
     IOException exceeded(@Nullable Throwable cause) {
-      return new OpenTmfClientExchangeTimeoutException(exchangeTimeout, cause);
+      return ExchangeTimeouts.exceeded(exchangeTimeout, cause);
     }
   }
 
@@ -132,17 +132,17 @@ final class ExchangeTimeoutRequestFactory extends HttpComponentsClientHttpReques
     @Override
     public ClientHttpResponse execute() throws IOException {
       var deadline = new Deadline(cancellable, exchangeTimeout);
-      ClientHttpResponse response = null;
+      ClientHttpResponse response;
       try {
-        response = new BoundedResponse(delegate.execute(), deadline);
-        return response;
+        response = delegate.execute();
       } catch (IOException e) {
+        deadline.disarm();
         throw deadline.passed() ? deadline.exceeded(e) : e;
-      } finally {
-        if (response == null) {
-          deadline.disarm();
-        }
+      } catch (RuntimeException e) {
+        deadline.disarm();
+        throw e;
       }
+      return new BoundedResponse(response, deadline);
     }
 
     @Override
@@ -235,7 +235,7 @@ final class ExchangeTimeoutRequestFactory extends HttpComponentsClientHttpReques
     @Override
     public int read() throws IOException {
       failIfPassed();
-      return ended(readOrFail(() -> super.read()));
+      return ended(readOrFail(super::read));
     }
 
     @Override

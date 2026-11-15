@@ -3,13 +3,13 @@ package org.opentmf.client.reactive.util;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.opentmf.client.common.exception.OpenTmfClientExchangeTimeoutException;
 import org.opentmf.client.common.model.ClientProperties;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DefaultDataBufferFactory;
@@ -53,7 +53,7 @@ class ExchangeTimeoutFilterTest {
     assertThat(failure).isExactlyInstanceOf(WebClientRequestException.class);
     assertThat(((WebClientRequestException) failure).getMethod()).isEqualTo(HttpMethod.GET);
     assertThat(((WebClientRequestException) failure).getUri()).isEqualTo(REQUEST.url());
-    assertThat(failure.getCause()).isInstanceOf(OpenTmfClientExchangeTimeoutException.class)
+    assertThat(failure.getCause()).isExactlyInstanceOf(SocketTimeoutException.class)
         .hasMessage("exchange-timeout of 300 ms passed before the response was fully received");
   }
 
