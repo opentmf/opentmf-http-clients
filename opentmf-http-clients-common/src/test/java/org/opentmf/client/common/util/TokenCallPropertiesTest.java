@@ -47,6 +47,21 @@ class TokenCallPropertiesTest {
   }
 
   @Test
+  void tokenBoundsSet_theCopyKeepsTheClientsExchangeTimeout() {
+    var client = slowBackendClient();
+    client.setExchangeTimeout(Duration.ofSeconds(90));
+    var bearer = new BearerAuthConfig();
+    bearer.setResponseTimeout(Duration.ofSeconds(5));
+    client.setBearerAuth(bearer);
+
+    var token = TokenCallProperties.of(client);
+
+    assertThat(token).isNotSameAs(client);
+    assertThat(token.getExchangeTimeout()).isEqualTo(Duration.ofSeconds(90));
+    assertThat(token.getResponseTimeout()).isEqualTo(Duration.ofSeconds(5));
+  }
+
+  @Test
   void tokenBoundsSet_aCopyCarriesThem_andTheClientIsUntouched() {
     var client = slowBackendClient();
     var bearer = new BearerAuthConfig();

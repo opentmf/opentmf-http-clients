@@ -120,6 +120,7 @@ Each client can override this via a per-client `client-type` property. The three
 | `max-connections-per-route` | int | *(max-connections)* | Per-route connection limit (Apache HttpClient only, ignored by others) |
 | `request-timeout` | Duration | `30s` | Connect timeout |
 | `response-timeout` | Duration | `45s` | How long to wait for the answer: one deadline for the whole exchange on `jdk`, silence per read on `apache` and `netty` — see below |
+| `exchange-timeout` | Duration | *(none)* | Opt-in bound on the whole exchange, from the send to the last byte of the body, on every client type — see below |
 | `connection-idle-timeout` | Duration | `4m` | How long idle connections stay in the pool before eviction |
 | `num-retries` | int | `3` | Maximum retry count (used by `executeWithRetry` / `WebClientUtil.retry`) |
 | `retry-wait-duration` | Duration | `5s` | Base wait between retries (exponential backoff) |
@@ -157,9 +158,22 @@ Duration values accept Spring Boot duration strings: `500ms`, `3s`, `1m`, `PT30S
 > - **Apache:** a `RestClientException` ("Error while extracting response for type […]") caused by a `SocketTimeoutException` ("Read timed out"), with Logbook writing the call or not. (Logbook reads the body inside the exchange to log it, and drops a failure of that read with a WARN, "Unable to log response"; the library's Logbook interceptor raises that same failure when the caller reads the body. Up to 2.5.1 the caller found the end of the stream instead, so on `apache` with Logbook at `TRACE` a body cut by the timeout came back as a `200` without a body.)
 > - **Netty:** a `WebClientResponseException` caused by Netty's `ReadTimeoutException`, with Logbook writing or not ("200 OK from GET … but response failed with cause: io.netty.handler.timeout.ReadTimeoutException").
 >
-> **On `netty` a cut body arrives as a `WebClientResponseException` that carries the answer's own status, a `200`:** code that reads that exception as "the server answered with an error" misreads a timeout. Tell them apart by the cause (`ReadTimeoutException`) or by `getStatusCode().isError()`, never by the exception type alone.
+> **On `netty` a cut body arrives as a `WebClientResponseException` that carries the answer's own status, a `200`:** code that reads that exception as "the server answered with an error" misreads a timeout. Tell them apart by the cause (`ReadTimeoutException`) or by `getStatusCode().isError()`, never by the exception type alone. With `exchange-timeout` set (below), a cut body arrives as a `WebClientRequestException` instead.
 >
-> **A caller that must bound a whole call:** on `jdk`, `response-timeout` already is that bound. On `netty`, put the Mono's own `.timeout(Duration)` on the call: it cancels the exchange and closes the connection when it passes. On `apache` the library sets no bound on the whole call: a peer that keeps sending, however slowly, holds it as long as it sends.
+> **A caller that must bound a whole call:** set `exchange-timeout` (below). Without it, on `jdk` `response-timeout` already is that bound; on `netty` the Mono's own `.timeout(Duration)` on the call is one (it cancels the exchange and closes the connection when it passes); on `apache` there is none: a peer that keeps sending, however slowly, holds the call as long as it sends.
+
+> **What `exchange-timeout` bounds** (opt-in, unset by default; a client that does not set it behaves exactly as before):
+> - **The whole exchange**, from the moment the request is sent to the last byte of the body: the headers and the whole body must arrive within it. A body that keeps arriving is cut when it passes, however steadily it arrives.
+> - **Apache** and **Netty:** a bound of its own beside `response-timeout` (silence per read): whichever passes first cuts the exchange. A peer that stalls is still cut by `response-timeout` when that comes first; a peer that trickles is cut by `exchange-timeout`.
+> - **JDK:** `response-timeout` already is one deadline over the whole exchange; with both set, **the smaller of the two** is that deadline, because both mean the same thing there and the tighter promise is the one the caller asked for.
+> - **The token call** runs under the client's `exchange-timeout` too (there is no `bearer-auth` key of its own). A mint cut by it is retried once at once, as any transport failure of a mint, so it holds a token retrieval for about twice `exchange-timeout`.
+>
+> What the caller sees when `exchange-timeout` cuts (measured, `ExchangeTimeoutIT`); never a status exception, so a cut exchange never passes as an answer:
+> - **Apache:** a `RestClientException` ("Error while extracting response for type […]") when the body was cut, a `ResourceAccessException` when the headers had not arrived; either caused by a `SocketTimeoutException` ("exchange-timeout of 3000 ms passed before the response was fully received"), so code that handles a read timeout handles it the same way. The same with Logbook writing the call.
+> - **Netty:** a `WebClientRequestException` caused by the same `SocketTimeoutException`, whether the headers or the body were cut, with Logbook writing or not. With `exchange-timeout` set, a body that fails for another transport reason (the `response-timeout` stall, a premature close) arrives as a `WebClientRequestException` too, caused by that failure, never as the `200` above.
+> - **JDK:** the JDK client's own timeout, as for `response-timeout`: a `RestClientException` caused by an `IOException` when the body was cut, a `ResourceAccessException` caused by an `HttpTimeoutException` ("Request cancelled") when the headers had not arrived.
+>
+> **Which bound fired is not part of the contract.** The message of the `SocketTimeoutException` names the bound for a person reading a log; it is informational and not a contract to match on. A caller cannot tell from the exception whether `exchange-timeout` or `response-timeout` cut the exchange: both arrive as a timeout under the client's transport failure.
 
 > **Logbook HTTP logging:**
 > When `logging-enabled: true` (the default), the library wires [Zalando Logbook](https://github.com/zalando/logbook) to log HTTP requests and responses. Logbook is **fully optional** — the starters do **not** pull it in transitively. To enable HTTP logging, add the appropriate Logbook dependency to your project:
@@ -806,7 +820,9 @@ Three keys under `bearer-auth` give the token request bounds of its own:
 | `bearer-auth.num-retries` | the client's `num-retries` | number of retries of a retryable status (`503`, `429`, …) |
 
 Each one, when unset, is the client's own value, so a client that sets none of them behaves
-exactly as before. The client's own API calls keep the client's bounds whatever is set here. The
+exactly as before. The client's `exchange-timeout`, when set, bounds the token request
+as well (see [What `exchange-timeout` bounds](#per-client-properties)); there is no `bearer-auth`
+key of its own for it. The client's own API calls keep the client's bounds whatever is set here. The
 token request still shares the client's connection pool, TLS, proxy, interceptors and resilience
 decoration; only its bounds differ. (On `jdk`, `bearer-auth.request-timeout` is the JDK
 client's connect timeout, which only an `HttpClient` of its own can carry: the token calls then

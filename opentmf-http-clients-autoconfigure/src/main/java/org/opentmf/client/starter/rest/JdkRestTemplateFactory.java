@@ -4,6 +4,7 @@ import io.micrometer.observation.ObservationRegistry;
 import java.net.InetSocketAddress;
 import java.net.ProxySelector;
 import java.net.http.HttpClient;
+import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.resilience.ResilienceRegistries;
@@ -48,7 +49,7 @@ public class JdkRestTemplateFactory extends AbstractRestTemplateFactory {
       }
 
       var requestFactory = new CloseableJdkClientHttpRequestFactory(builder.build());
-      requestFactory.setReadTimeout(properties.getResponseTimeout());
+      requestFactory.setReadTimeout(readTimeout(properties));
       var restTemplate = new RestTemplate(requestFactory);
       restTemplate.setErrorHandler(new OpenTmfResponseErrorHandler());
       applyObservationRegistry(restTemplate);
@@ -69,5 +70,17 @@ public class JdkRestTemplateFactory extends AbstractRestTemplateFactory {
     } catch (Exception e) {
       throw new IllegalArgumentException("Failed to create JDK RestTemplate for " + clientId, e);
     }
+  }
+
+  /**
+   * The JDK request factory's read timeout, which is one deadline for the whole exchange:
+   * {@code response-timeout}, or {@code exchange-timeout} when that is set and smaller.
+   */
+  static Duration readTimeout(ClientProperties properties) {
+    var exchangeTimeout = properties.getExchangeTimeout();
+    var responseTimeout = properties.getResponseTimeout();
+    return exchangeTimeout != null && exchangeTimeout.compareTo(responseTimeout) < 0
+        ? exchangeTimeout
+        : responseTimeout;
   }
 }

@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import lombok.Getter;
 import lombok.Setter;
+import org.jspecify.annotations.Nullable;
 import org.springframework.validation.annotation.Validated;
 
 /**
@@ -59,6 +60,20 @@ public class ClientProperties {
    * applies it to the TLS handshake and to the proxy CONNECT exchange. Default 45s.
    */
   private Duration responseTimeout = Duration.ofSeconds(45);
+
+  /**
+   * Opt-in bound on the whole exchange: from the send to the last byte of the body, the headers
+   * and the whole body must arrive within it, so a body that keeps arriving slowly is cut too.
+   * On Apache and Netty, where {@code response-timeout} is silence per read, it is a bound of its
+   * own, and whichever of the two passes first cuts the exchange. On JDK, where
+   * {@code response-timeout} already is one deadline for the whole exchange, the smaller of the
+   * two is that deadline. A cut exchange fails as the client's transport failure caused by a
+   * {@code SocketTimeoutException} on Apache and Netty, and as the JDK client's own timeout on
+   * JDK; never as an answer. Its message names the bound for a log reader but is not a contract:
+   * a caller cannot tell from the exception which of the two timeouts cut the exchange. The bearer token call runs under it too. Unset by
+   * default: no whole-exchange bound beyond {@code response-timeout}, as before.
+   */
+  private @Nullable Duration exchangeTimeout;
 
   /**
    * How long pooled connections may stay idle before being evicted (also the connection
