@@ -97,7 +97,7 @@ public class SyncTokenClientImpl {
     try {
       var token = SyncClientUtil.executeWithRetry(
           () -> exchangeWithTransportRetry(tokenUrl, formData, attempts), numRetries,
-          retryWaitDuration, 0.0d, maxRetryAfter);
+          retryWaitDuration, BearerTokenUtil.TOKEN_RETRY_JITTER, maxRetryAfter);
       log.info("Bearer token minted from {} (scope: {}, attempt {}, {} ms)", shownUrl, scope,
           attempts.get(), TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
       listener.onTokenFetch(shownUrl, attempts.get() == 1 ? Outcome.OK : Outcome.RETRIED);

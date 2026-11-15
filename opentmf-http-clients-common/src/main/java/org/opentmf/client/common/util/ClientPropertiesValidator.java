@@ -149,6 +149,9 @@ public class ClientPropertiesValidator {
       findings.add(new Finding("bearer-auth.cache-safety-factor",
           "must be between 0.1 and 0.99"));
     }
+    if (bearer.getFailureMemory() != null) {
+      requirePositive(bearer.getFailureMemory(), "bearer-auth.failure-memory", findings);
+    }
   }
 
   private static void validateCertificates(ClientProperties properties, List<Finding> findings) {

@@ -86,7 +86,8 @@ public class BearerTokenClientImpl implements BearerTokenClient {
               .onRetryExhaustedThrow((spec, signal) -> new BearerTokenTransportException(
                   tokenUrl, (int) signal.totalRetries() + 1, signal.failure())))
           .retryWhen(WebClientUtil.retry(properties.getNumRetries(),
-              properties.getRetryWaitDuration(), 0.0d, properties.getMaxRetryAfter()))
+              properties.getRetryWaitDuration(), BearerTokenUtil.TOKEN_RETRY_JITTER,
+              properties.getMaxRetryAfter()))
           .doOnSuccess(token -> {
             log.info("Bearer token minted from {} (scope: {}, attempt {}, {} ms)", shownUrl,
                 scope, attempts.get(), TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));

@@ -27,6 +27,13 @@ public class BearerTokenUtil {
 
   public static final String SCOPE = "scope";
 
+  /**
+   * The jitter of the token call's status retries: each wait is the backoff spread at random by
+   * up to half of it, so the token calls of many callers, keys or pods that failed together do
+   * not retry together.
+   */
+  public static final double TOKEN_RETRY_JITTER = 0.5d;
+
   public static String findScope(String additionalScopes, String configuredScopes,
       Map<String, String> enricher) {
     var scope = Optional.ofNullable(additionalScopes)

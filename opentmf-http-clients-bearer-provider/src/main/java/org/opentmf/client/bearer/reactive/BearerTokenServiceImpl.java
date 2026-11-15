@@ -10,22 +10,50 @@ import static org.opentmf.client.common.util.TokenUtil.cacheKey;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import java.net.URI;
+import java.time.Duration;
 import java.util.Map;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.opentmf.client.bearer.model.TokenEntry;
 import org.opentmf.client.bearer.util.BearerTokenUtil;
+import org.opentmf.client.bearer.util.TokenMints;
 import org.opentmf.client.common.model.BearerAuthConfig;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.node.ObjectNode;
 
+/**
+ * Bearer tokens for a reactive client, cached per token URL, scope and username. Callers of one
+ * key that find no cached token while its mint is in flight wait for that mint and share its
+ * outcome; with {@code bearer-auth.failure-memory} set, a retryable failure is remembered for a
+ * while (see {@link TokenMints}).
+ */
 @Slf4j
-@RequiredArgsConstructor
 public class BearerTokenServiceImpl implements BearerTokenService {
 
   private final BearerAuthConfig config;
   private final Cache<String, TokenEntry> tokenCache;
   private final BearerTokenClient tokenClient;
+  private final TokenMints mints;
+
+  /**
+   * A {@code Retry-After} lengthens the failure memory up to the default
+   * {@code max-retry-after}.
+   */
+  public BearerTokenServiceImpl(BearerAuthConfig config, Cache<String, TokenEntry> tokenCache,
+      BearerTokenClient tokenClient) {
+    this(config, tokenCache, tokenClient, TokenMints.DEFAULT_MAX_RETRY_AFTER);
+  }
+
+  /**
+   * @param maxRetryAfter the client's {@code max-retry-after}: the longest {@code Retry-After}
+   *                      that lengthens the failure memory
+   */
+  public BearerTokenServiceImpl(BearerAuthConfig config, Cache<String, TokenEntry> tokenCache,
+      BearerTokenClient tokenClient, Duration maxRetryAfter) {
+    this.config = config;
+    this.tokenCache = tokenCache;
+    this.tokenClient = tokenClient;
+    this.mints = new TokenMints(tokenCache, config.getFailureMemory(), maxRetryAfter);
+  }
 
   @Override
   public String getTokenType() {
@@ -55,6 +83,7 @@ public class BearerTokenServiceImpl implements BearerTokenService {
   @Override
   public void clearCache() {
     tokenCache.invalidateAll();
+    mints.forget();
   }
 
   private Mono<String> getToken(URI uri, String additionalScopes, Map<String, String> enricher) {
@@ -69,14 +98,14 @@ public class BearerTokenServiceImpl implements BearerTokenService {
       return Mono.just(extractToken(cached.getTokenData()));
     }
 
-    var multiValueMap = enrichFormData(config, username, scope, enricher);
-    return tokenClient.retrieveToken(uri, multiValueMap)
-        .doOnNext(tokenData -> {
-          var entry = TokenEntry.from(tokenData, config.getExpiresInField(),
-              config.getFallbackExpiresInSeconds(), config.getCacheSafetyFactor());
-          tokenCache.put(key, entry);
-        })
-        .map(this::extractToken);
+    var mint = Mono.defer(() -> tokenClient
+        .retrieveToken(uri, enrichFormData(config, username, scope, enricher))
+        .map(tokenData -> TokenEntry.from(tokenData, config.getExpiresInField(),
+            config.getFallbackExpiresInSeconds(), config.getCacheSafetyFactor())));
+    // the mint is subscribed with the context of the caller that starts it
+    return Mono.deferContextual(context -> Mono.fromFuture(
+            mints.getAsync(key, () -> mint.contextWrite(context).toFuture()), true))
+        .map(entry -> extractToken(entry.getTokenData()));
   }
 
   private String extractToken(ObjectNode objectNode) {
