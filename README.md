@@ -1354,6 +1354,22 @@ import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 | `*_TOKEN_CONFIG_CACHE_EXPIRY_SECONDS` | *(removed)* |
 | `*_TOKEN_CONFIG_FORM_DATA_*` | `*_BEARER_AUTH_FORM_DATA_*` |
 
+## Contributing
+
+Work goes to `develop` through a pull request.
+
+- **Build locally with JDK 17 and Maven 3.9.x**; the build refuses other versions. `mvn clean
+  verify` builds every module and runs the unit and integration tests and the per-module coverage
+  checks. No Docker is needed.
+- **CI:** GitHub Actions runs that same `mvn clean verify` on every pull request and every push to
+  `develop` (`.github/workflows/maven-build.yml`), on GitHub-hosted runners, with no secrets and
+  nothing published.
+- **A pull request merges only when both are green:**
+  - its CI run;
+  - the maintainers' local gate, which adds the Sonar analysis (no new issues, coverage of new
+    code) and, for a change of behaviour, a compatibility report measured against the released
+    version (see `docs/`).
+
 ## License
 
 [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt)
