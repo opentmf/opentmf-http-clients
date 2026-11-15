@@ -160,7 +160,8 @@ public class RestClientRegistrar {
         tokenRestClient(restClient, tokenFactory, bearerConfig), properties, bearerConfig,
         tokenFetchListener(clientId));
     var cache = TokenCacheUtil.buildTokenCache();
-    return new SyncBearerTokenServiceImpl(bearerConfig, cache, syncTokenClient);
+    return new SyncBearerTokenServiceImpl(bearerConfig, cache, syncTokenClient,
+        properties.getMaxRetryAfter());
   }
 
   /**

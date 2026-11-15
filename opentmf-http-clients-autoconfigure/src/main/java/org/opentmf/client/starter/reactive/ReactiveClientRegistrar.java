@@ -177,7 +177,8 @@ public class ReactiveClientRegistrar {
     var tokenClient = new BearerTokenClientImpl(properties, bearerConfig, tokenWebClient,
         tokenFetchListener(clientId));
     var cache = TokenCacheUtil.buildTokenCache();
-    return new BearerTokenServiceImpl(bearerConfig, cache, tokenClient);
+    return new BearerTokenServiceImpl(bearerConfig, cache, tokenClient,
+        properties.getMaxRetryAfter());
   }
 
   private TokenFetchListener tokenFetchListener(String clientId) {

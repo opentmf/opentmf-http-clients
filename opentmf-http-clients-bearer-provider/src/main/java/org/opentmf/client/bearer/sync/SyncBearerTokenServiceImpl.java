@@ -8,21 +8,49 @@ import static org.opentmf.client.common.util.TokenUtil.TOKEN_TYPE_BEARER;
 import static org.opentmf.client.common.util.TokenUtil.cacheKey;
 
 import com.github.benmanes.caffeine.cache.Cache;
+import java.time.Duration;
 import java.util.Map;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.opentmf.client.bearer.model.TokenEntry;
 import org.opentmf.client.bearer.util.BearerTokenUtil;
+import org.opentmf.client.bearer.util.TokenMints;
 import org.opentmf.client.common.model.BearerAuthConfig;
 import tools.jackson.databind.node.ObjectNode;
 
+/**
+ * Bearer tokens for a sync client, cached per token URL, scope and username. Callers of one key
+ * that find no cached token while its mint is in flight wait for that mint and share its
+ * outcome; with {@code bearer-auth.failure-memory} set, a retryable failure is remembered for a
+ * while (see {@link TokenMints}).
+ */
 @Slf4j
-@RequiredArgsConstructor
 public class SyncBearerTokenServiceImpl implements SyncBearerTokenService {
 
   private final BearerAuthConfig config;
   private final Cache<String, TokenEntry> tokenCache;
   private final SyncTokenClientImpl syncTokenClient;
+  private final TokenMints mints;
+
+  /**
+   * A {@code Retry-After} lengthens the failure memory up to the default
+   * {@code max-retry-after}.
+   */
+  public SyncBearerTokenServiceImpl(BearerAuthConfig config, Cache<String, TokenEntry> tokenCache,
+      SyncTokenClientImpl syncTokenClient) {
+    this(config, tokenCache, syncTokenClient, TokenMints.DEFAULT_MAX_RETRY_AFTER);
+  }
+
+  /**
+   * @param maxRetryAfter the client's {@code max-retry-after}: the longest {@code Retry-After}
+   *                      that lengthens the failure memory
+   */
+  public SyncBearerTokenServiceImpl(BearerAuthConfig config, Cache<String, TokenEntry> tokenCache,
+      SyncTokenClientImpl syncTokenClient, Duration maxRetryAfter) {
+    this.config = config;
+    this.tokenCache = tokenCache;
+    this.syncTokenClient = syncTokenClient;
+    this.mints = new TokenMints(tokenCache, config.getFailureMemory(), maxRetryAfter);
+  }
 
   @Override
   public String getTokenType() {
@@ -42,6 +70,7 @@ public class SyncBearerTokenServiceImpl implements SyncBearerTokenService {
   @Override
   public void clearCache() {
     tokenCache.invalidateAll();
+    mints.forget();
   }
 
   private String getTokenInternal(String additionalScopes, Map<String, String> enricher) {
@@ -55,12 +84,13 @@ public class SyncBearerTokenServiceImpl implements SyncBearerTokenService {
       return extractToken(cached.getTokenData());
     }
 
-    var multiValueMap = enrichFormData(config, username, scope, enricher);
-    ObjectNode tokenData = syncTokenClient.getToken(config.getTokenUrl(), multiValueMap);
-    var entry = TokenEntry.from(tokenData, config.getExpiresInField(),
-        config.getFallbackExpiresInSeconds(), config.getCacheSafetyFactor());
-    tokenCache.put(key, entry);
-    return extractToken(tokenData);
+    var entry = mints.get(key, () -> {
+      var multiValueMap = enrichFormData(config, username, scope, enricher);
+      ObjectNode tokenData = syncTokenClient.getToken(config.getTokenUrl(), multiValueMap);
+      return TokenEntry.from(tokenData, config.getExpiresInField(),
+          config.getFallbackExpiresInSeconds(), config.getCacheSafetyFactor());
+    });
+    return extractToken(entry.getTokenData());
   }
 
   private String extractToken(ObjectNode objectNode) {

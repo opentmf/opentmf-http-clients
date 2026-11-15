@@ -74,8 +74,44 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   type. It also names a trap the measurement found: on `netty` a cut body arrives as a
   `WebClientResponseException` carrying the answer's own `200`, so tell it from an error answer by
   its cause, not by its type.
+- **Concurrent callers of one token key make one token call, not one each.** A bearer token was
+  cached only once its call succeeded, and the lookup, the call and the store were separate steps:
+  every caller that found no token, on a cold cache, when the cached token expired under load or
+  while the identity provider was failing, made a token call of its own, with its own retries.
+  Measured at a stand-in token endpoint with K = 1 / 8 / 32 concurrent callers, sync and reactive
+  alike: a `503` outage cost 4 / 32 / 128 calls, a transport outage 2 / 16 / 64, a recovery on an
+  empty cache 1 / 8 / 32, a normal expiry under load 1 / 8 / 32. Now a caller that finds no cached
+  token while a mint of its key (token URL, scope, username) is in flight waits for that mint and
+  shares its outcome: one mint, whatever K (4, 2, 1 and 1 calls). A failure is shared only by the
+  callers waiting for that mint; the next caller mints again, unless `bearer-auth.failure-memory`
+  is set. **What a caller sees change:** the token counter (`opentmf.client.token.fetch`) and the
+  `Bearer token minted` line count once per burst of callers, not once per caller (still once per
+  mint, as documented); the mint runs on the thread, and in the trace, of the caller that started
+  it, so a waiting caller's own trace holds no token call, only the wait inside its own call; a
+  waiting caller that fails gets its own copy of the failure (same type, message, status, headers
+  and cause, its own stack trace); a reactive caller that cancels stops waiting, and the mint
+  finishes and is cached for the next caller. A single caller sees no change (the compatibility
+  report in `docs/token-single-flight-compatibility.md`). See the README's "Concurrent callers and
+  a failing identity provider".
+- **The token call's status retries are jittered:** each wait is the backoff spread at random by
+  up to half of it either way, so the token calls of callers, keys and pods that failed together
+  do not retry together. The number of retries and the `Retry-After` handling are unchanged.
 
 ### Added
+- **`bearer-auth.failure-memory`: an opt-in memory of a failed token retrieval**, unset by
+  default (and then nothing is remembered, as before). When set, a retrieval that failed
+  retryably (a 5xx, `408` or `429` from the token endpoint, or a transport failure, after the
+  token call's own retries) is remembered for that long: until then every token request for the
+  same key fails at once with that failure (its own copy), without a call. A `Retry-After` from
+  the token endpoint lengthens it, up to the client's `max-retry-after`. A refused credential
+  (any other 4xx) and an unusable answer are never remembered; `clearCache()` forgets. The cost:
+  once the identity provider is back, the next token can come up to that long late.
+- `TokenMints` (`opentmf-http-clients-bearer-provider`): the one mint per key and the failure
+  memory of a token service; and the constructors
+  `SyncBearerTokenServiceImpl(config, cache, client, maxRetryAfter)` and
+  `BearerTokenServiceImpl(config, cache, client, maxRetryAfter)`, which bound the failure
+  memory's `Retry-After` by the client's `max-retry-after` (the existing constructors use its
+  default, 30 s). `BearerTokenUtil.TOKEN_RETRY_JITTER` names the jitter.
 - `bearer-auth.log-response-body` (default `false`): `true` gives the token calls' log line its
   response body again, for debugging a token endpoint.
 - `BearerTokenException.getTokenUrl()` / `getOauthError()` and the constructor

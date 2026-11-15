@@ -133,6 +133,19 @@ public class BearerAuthConfig {
   private @Nullable Integer numRetries;
 
   /**
+   * Opt-in memory of a failed token retrieval: how long a retrieval that failed retryably (a 5xx,
+   * 408 or 429 from the token endpoint, or a transport failure, after the token call's own
+   * retries) is remembered. Until then every token request for the same token URL, scope and
+   * username fails at once with that failure, without a call, so callers do not repeat the
+   * retrieval against a failing identity provider. A {@code Retry-After} from the token endpoint
+   * lengthens it, up to the client's {@code max-retry-after}. A refused credential (any other
+   * 4xx) and an unusable answer are never remembered. The cost: once the identity provider is
+   * back, the next token can be retrieved up to this long late. Unset by default: a failure is
+   * not remembered, and the next caller retrieves again.
+   */
+  private @Nullable Duration failureMemory;
+
+  /**
    * Whether the request log (Logbook, with the client's {@code logging-enabled}) shows the token
    * endpoint's response body. Default false: a marker stands in its place, because an identity
    * provider may echo the request form (the client secret, a password, a refresh token) and a

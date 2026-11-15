@@ -253,6 +253,8 @@ opentmf:
         headers:                        # sent on the token call only
           x-api-key: myApiKey
         log-response-body: false        # true: Logbook shows the token answer; debugging only
+        # failure-memory: 10s           # opt-in, unset by default: see "Concurrent callers and
+                                        # a failing identity provider"
         form-data:
           username: user
           password: pass
@@ -848,6 +850,75 @@ opentmf:
 Keep in mind that a mint that times out is retried **once** at once (the transport retry above), so
 an identity provider that does not answer holds a mint for about twice
 `bearer-auth.response-timeout` per status attempt.
+
+### Concurrent callers and a failing identity provider
+
+**Why a cache alone does not stop the repeat.** A token is cached only once its call succeeded,
+and finding it, calling for it and storing it are three steps: every caller that finds no token
+calls. That happens on a cold cache, every time a cached token expires under load, and all the
+while an identity provider is failing, when nothing is ever stored. Until 2.5.2 each of those
+callers made its own token call, with its own retries. Measured at a stand-in token endpoint, K
+concurrent callers of one key, sync and reactive alike:
+
+| Case | Token calls until 2.5.1, K = 1 / 8 / 32 | Since 2.5.2 |
+|---|---|---|
+| Outage: the token endpoint answers `503` (default `num-retries: 3`) | 4 / 32 / 128 | 4 / 4 / 4 |
+| Outage: the connection fails (one transport retry) | 2 / 16 / 64 | 2 / 2 / 2 |
+| Recovery: the endpoint answers again, the cache is empty | 1 / 8 / 32 | 1 / 1 / 1 |
+| A cached token expires under load | 1 / 8 / 32 | 1 / 1 / 1 |
+
+**One mint per key.** A caller that finds no cached token while a mint of its key (token URL,
+scope, username) is in flight waits for that mint and shares its outcome, the token or the
+failure. It needs no setting. What a caller sees of it:
+
+- The token counter `opentmf.client.token.fetch` and the `Bearer token minted` line count once
+  per burst of callers, not once per caller. They still count once per mint, as documented: there
+  are fewer mints.
+- The mint runs on the thread of the caller that started it (sync), or subscribed with that
+  caller's Reactor context (reactive). Its HTTP call, its log lines (and their trace id) and the
+  token call's span belong to **that caller's trace**. A caller that waited for it has no token
+  call in its own trace: its wait shows only as time inside its own call. To find why a call was
+  slow on a token, look for the mint in the trace of the call that started it, at the same moment.
+- A waiting caller that fails gets its own copy of the failure: the same type, message, status,
+  headers, `Retry-After` and cause, with its own stack trace. No exception instance is shared
+  between callers.
+- A reactive caller that cancels (a timeout operator, say) stops waiting; the mint is not
+  cancelled with it, and its token is cached for the next caller.
+- A failure is shared only by the callers waiting for that mint. Once it has settled, the next
+  caller mints again, unless the failure memory below is on.
+
+A single caller sees no change: same calls, outcomes, exceptions and listener notifications
+(measured against 2.5.1, `docs/token-single-flight-compatibility.md`).
+
+**`bearer-auth.failure-memory`: remembering a failure (opt-in).** Unset by default, and then
+nothing is remembered. When set, a token retrieval that failed **retryably** after the token
+call's own retries is remembered for that long. Until then every token request for the same key
+fails at once with that failure (its own copy), without a call. Retryable means:
+
+- a 5xx, `408` or `429` from the token endpoint;
+- a transport failure (`BearerTokenTransportException`).
+
+A `Retry-After` from the token endpoint lengthens the memory, up to the client's
+`max-retry-after`. A refused credential (`400`, `401`, `403`, any other 4xx) and an unusable answer
+are never remembered: they are the identity provider's verdict, not an outage. The library logs one
+`WARN` when it remembers a failure, and a `DEBUG` line for each request it fails from the memory.
+A failure served from the memory is no mint: the token counter does not count it. `clearCache()`
+forgets every remembered failure. The cost is that, once the identity provider is back, the next
+token can come up to `failure-memory` late, so keep it short (seconds, about one `retry-wait-duration`):
+
+```yaml
+opentmf:
+  http-clients:
+    orders:
+      bearer-auth:
+        token-url: https://idp.example.invalid/token
+        # ...
+        failure-memory: 10s           # an outage costs one retrieval per 10 s per key, not one per caller
+```
+
+**Jittered token retries.** The token call's status retries wait the backoff spread at random by
+up to half of it either way. The token calls of keys and pods that failed together then do not
+all retry at the same moment. The number of retries and the `Retry-After` handling are as before.
 
 ## Mutual TLS Support
 
