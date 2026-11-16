@@ -48,15 +48,17 @@ public final class TokenUrls {
       return URI.create(url.getScheme() + ":" + WITHHELD);
     }
     var shown = new StringBuilder();
-    if (url.getScheme() != null) {
-      shown.append(url.getScheme()).append(':');
+    var scheme = url.getScheme();
+    if (scheme != null) {
+      shown.append(scheme).append(':');
     }
     var authority = url.getRawAuthority();
     if (authority != null) {
       shown.append("//").append(authority.substring(authority.lastIndexOf('@') + 1));
     }
-    if (url.getRawPath() != null) {
-      shown.append(url.getRawPath());
+    var path = url.getRawPath();
+    if (path != null) {
+      shown.append(path);
     }
     return URI.create(shown.toString());
   }
