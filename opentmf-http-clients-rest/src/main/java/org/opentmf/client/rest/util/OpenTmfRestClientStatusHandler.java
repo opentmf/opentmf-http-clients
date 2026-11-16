@@ -8,7 +8,6 @@ import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.client.common.model.PeerTextInMessage;
 import org.opentmf.client.common.util.ErrorBodyExtractor;
 import org.opentmf.client.common.util.HttpClientUtil;
-import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.web.client.RestClient;
@@ -44,11 +43,6 @@ public final class OpenTmfRestClientStatusHandler {
   public static RestClient.ResponseSpec.ErrorHandler errorHandler(
       @Nullable PeerTextInMessage peerText) {
     return (request, response) -> handleError(response, peerText);
-  }
-
-  static void handleError(HttpRequest request, ClientHttpResponse response)
-      throws IOException {
-    handleError(response, PeerTextInMessage.WHOLE);
   }
 
   private static void handleError(ClientHttpResponse response,

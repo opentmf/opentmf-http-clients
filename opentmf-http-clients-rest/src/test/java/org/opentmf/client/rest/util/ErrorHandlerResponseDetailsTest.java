@@ -59,7 +59,7 @@ class ErrorHandlerResponseDetailsTest {
       HttpHeaders headers, byte[] body) throws IOException {
     var response = response(status, headers, body);
     var thrown = catchThrowable(
-        () -> OpenTmfRestClientStatusHandler.handleError(mock(HttpRequest.class), response));
+        () -> OpenTmfRestClientStatusHandler.errorHandler().handle(mock(HttpRequest.class), response));
     assertThat(thrown).isInstanceOf(OpenTmfClientResponseException.class);
     return (OpenTmfClientResponseException) thrown;
   }

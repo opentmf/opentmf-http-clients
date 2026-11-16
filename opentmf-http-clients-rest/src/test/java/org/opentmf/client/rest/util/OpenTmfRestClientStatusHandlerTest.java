@@ -26,7 +26,7 @@ class OpenTmfRestClientStatusHandlerTest {
   void handleError_404_throwsNotFoundException() throws IOException {
     var request = mock(HttpRequest.class);
     try (var response = mockResponse(HttpStatus.NOT_FOUND, "{\"detail\":\"not found\"}")) {
-      assertThatThrownBy(() -> OpenTmfRestClientStatusHandler.handleError(request, response))
+      assertThatThrownBy(() -> OpenTmfRestClientStatusHandler.errorHandler().handle(request, response))
           .isInstanceOf(OpenTmfClientNotFoundException.class)
           .satisfies(ex -> {
             var e = (OpenTmfClientNotFoundException) ex;
@@ -40,7 +40,7 @@ class OpenTmfRestClientStatusHandlerTest {
   void handleError_500_throwsClientResponseException() throws IOException {
     var request = mock(HttpRequest.class);
     try (var response = mockResponse(HttpStatus.INTERNAL_SERVER_ERROR, "{\"message\":\"server error\"}")) {
-      assertThatThrownBy(() -> OpenTmfRestClientStatusHandler.handleError(request, response))
+      assertThatThrownBy(() -> OpenTmfRestClientStatusHandler.errorHandler().handle(request, response))
           .isInstanceOf(OpenTmfClientResponseException.class)
           .isNotInstanceOf(OpenTmfClientNotFoundException.class)
           .satisfies(ex -> {
@@ -54,7 +54,7 @@ class OpenTmfRestClientStatusHandlerTest {
   void handleError_emptyBody() throws IOException {
     var request = mock(HttpRequest.class);
     try (var response = mockResponse(HttpStatus.BAD_GATEWAY, "")) {
-      assertThatThrownBy(() -> OpenTmfRestClientStatusHandler.handleError(request, response))
+      assertThatThrownBy(() -> OpenTmfRestClientStatusHandler.errorHandler().handle(request, response))
           .isInstanceOf(OpenTmfClientResponseException.class)
           .satisfies(ex -> {
             var e = (OpenTmfClientResponseException) ex;
@@ -67,7 +67,7 @@ class OpenTmfRestClientStatusHandlerTest {
   void handleError_400_throwsClientResponseException() throws IOException {
     var request = mock(HttpRequest.class);
     try (var response = mockResponse(HttpStatus.BAD_REQUEST, "bad request")) {
-      assertThatThrownBy(() -> OpenTmfRestClientStatusHandler.handleError(request, response))
+      assertThatThrownBy(() -> OpenTmfRestClientStatusHandler.errorHandler().handle(request, response))
           .isInstanceOf(OpenTmfClientResponseException.class)
           .isNotInstanceOf(OpenTmfClientNotFoundException.class);
     }
