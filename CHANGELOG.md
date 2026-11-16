@@ -104,6 +104,24 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   do not retry together. The number of retries and the `Retry-After` handling are unchanged.
 
 ### Added
+- **`peer-text-in-message`: how much of a peer's error text the exception message carries**, per
+  client: `whole` (the default), `capped` or `none`. The message of an
+  `OpenTmfClientResponseException` takes the error field of a JSON body whole, whatever its
+  length; a field that is an object or an array goes in as its whole JSON text. Only a non-JSON
+  body was cut, at 2000 characters. So an application that logs the message, puts it into its
+  own answer or stores it carried a peer's text of any length. `capped` cuts the peer's text at
+  2000 characters followed by `...`, the joined fields and a non-string field's JSON text alike.
+  `none` keeps `HTTP <status> <reason>` only. **Compatibility:** unset, or `whole`, gives the
+  message of 2.5.1 byte for byte. The golden over string, object, array, non-JSON, binary and
+  empty bodies was taken on the message code as released in 2.5.1, unchanged until this change.
+  It holds on every client type through `RestTemplate`, `RestClient` and `WebClient`. In every
+  value `getResponseBody()`, the status, the headers, `Retry-After` and the `404` subtype are
+  unchanged. The no-argument `OpenTmfResponseErrorHandler()`,
+  `OpenTmfRestClientStatusHandler.errorHandler()`, `WebClientConfigUtil.errorWrappingFilter()`,
+  `RestClientRegistrar.createRestClient(RestTemplate)` and the existing
+  `ErrorBodyExtractor.extractMessage` methods keep today's message. Each has a new overload that
+  takes the value. An application that reads the peer's sentence out of the message must not
+  choose `none`; `getResponseBody()` holds it in every value.
 - **`bearer-auth.failure-memory`: an opt-in memory of a failed token retrieval**, unset by
   default (and then nothing is remembered, as before). When set, a retrieval that failed
   retryably (a 5xx, `408` or `429` from the token endpoint, or a transport failure, after the

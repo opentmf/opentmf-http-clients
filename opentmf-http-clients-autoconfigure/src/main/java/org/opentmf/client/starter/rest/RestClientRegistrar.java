@@ -17,6 +17,7 @@ import org.opentmf.client.bearer.util.TokenCacheUtil;
 import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.model.ClientType;
+import org.opentmf.client.common.model.PeerTextInMessage;
 import org.opentmf.client.common.util.BearerAuthRequirements;
 import org.opentmf.client.common.util.TokenCallProperties;
 import org.opentmf.client.rest.service.api.RestTemplateFactory;
@@ -67,7 +68,7 @@ public class RestClientRegistrar {
   public void registerBeans(String clientId, ClientType clientType, ClientProperties properties) {
     BearerAuthRequirements.requireTokenUrl(clientId, properties);
     var restTemplate = createRestTemplate(clientId, clientType, properties);
-    var restClient = createRestClient(restTemplate);
+    var restClient = createRestClient(restTemplate, properties);
     registerIfAbsent(clientId + REST_TEMPLATE, restTemplate);
     registerIfAbsent(clientId + REST_CLIENT, restClient);
     registerIfAbsent(clientId + TOKEN_SERVICE,
@@ -102,9 +103,22 @@ public class RestClientRegistrar {
    * factory and interceptors and adding the library's error-wrapping status handler.
    */
   public RestClient createRestClient(RestTemplate restTemplate) {
+    return createRestClient(restTemplate, PeerTextInMessage.WHOLE);
+  }
+
+  /**
+   * As {@link #createRestClient(RestTemplate)}, its error messages carrying as much of the
+   * peer's text as the client's {@code peer-text-in-message} allows.
+   */
+  public RestClient createRestClient(RestTemplate restTemplate, ClientProperties properties) {
+    return createRestClient(restTemplate, properties.getPeerTextInMessage());
+  }
+
+  private static RestClient createRestClient(RestTemplate restTemplate,
+      PeerTextInMessage peerText) {
     return RestClient.builder(restTemplate)
         .defaultStatusHandler(HttpStatusCode::isError,
-            OpenTmfRestClientStatusHandler.errorHandler())
+            OpenTmfRestClientStatusHandler.errorHandler(peerText))
         .build();
   }
 

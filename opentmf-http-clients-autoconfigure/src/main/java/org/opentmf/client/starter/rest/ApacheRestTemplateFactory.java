@@ -108,7 +108,8 @@ public class ApacheRestTemplateFactory extends AbstractRestTemplateFactory {
       var httpClient = httpClientBuilder.build();
 
       var restTemplate = new RestTemplate(requestFactory(httpClient, properties));
-      restTemplate.setErrorHandler(new OpenTmfResponseErrorHandler());
+      restTemplate.setErrorHandler(
+          new OpenTmfResponseErrorHandler(properties.getPeerTextInMessage()));
       applyObservationRegistry(restTemplate);
       addContributedInterceptors(restTemplate);
       addResilienceInterceptor(restTemplate, clientId, properties);

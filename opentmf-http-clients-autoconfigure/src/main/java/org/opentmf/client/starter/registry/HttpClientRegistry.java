@@ -175,7 +175,7 @@ public class HttpClientRegistry implements DisposableBean {
     BearerAuthRequirements.requireTokenUrl(name, properties);
     var restTemplate = restRegistrar.createRestTemplate(name, type, properties);
     var requestFactory = rawRequestFactory(restTemplate);
-    var restClient = restRegistrar.createRestClient(restTemplate);
+    var restClient = restRegistrar.createRestClient(restTemplate, properties);
     var tokenService = restRegistrar.createTokenService(name, restTemplate, restClient,
         properties);
     var managed = new ManagedSyncClient(restTemplate, restClient, tokenService);

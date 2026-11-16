@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Optional;
 import lombok.Generated;
 import org.jspecify.annotations.Nullable;
+import org.opentmf.client.common.model.PeerTextInMessage;
 import org.opentmf.commons.util.JacksonUtil;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -21,6 +22,9 @@ import tools.jackson.databind.JsonNode;
  * Extracts a human-readable error message from HTTP error response bodies. Supports multiple
  * common JSON error formats (RFC 7807, TMF Open API, OAuth2, Spring Boot) and falls back
  * gracefully for plain text, binary, or empty bodies.
+ *
+ * <p>The methods without a {@link PeerTextInMessage} argument give the
+ * {@link PeerTextInMessage#WHOLE} message, the behaviour of earlier releases.</p>
  */
 public final class ErrorBodyExtractor {
 
@@ -68,15 +72,29 @@ public final class ErrorBodyExtractor {
    */
   public static String extractMessage(HttpStatusCode status, byte[] body,
       @Nullable MediaType contentType) {
+    return extractMessage(status, body, contentType, PeerTextInMessage.WHOLE);
+  }
+
+  /**
+   * Extracts the message, carrying as much of the peer's text as {@code peerText} allows.
+   *
+   * @param contentType the response {@code Content-Type}, or {@code null} if absent
+   * @param peerText how much of the peer's text the message carries; {@code null} means
+   *     {@link PeerTextInMessage#WHOLE}
+   * @return a formatted message like {@code "HTTP 404 Not Found: Resource not found"}, or
+   *     {@code "HTTP 404 Not Found"} under {@link PeerTextInMessage#NONE}
+   */
+  public static String extractMessage(HttpStatusCode status, byte[] body,
+      @Nullable MediaType contentType, @Nullable PeerTextInMessage peerText) {
     String statusPrefix = formatStatus(status);
-    if (body == null || body.length == 0) {
+    if (body == null || body.length == 0 || peerText == PeerTextInMessage.NONE) {
       return statusPrefix;
     }
     String text = decodeAsText(body, charsetOf(contentType));
     if (text == null) {
       return statusPrefix + ": " + NON_TEXT_BODY;
     }
-    return composeMessage(statusPrefix, text);
+    return composeMessage(statusPrefix, text, peerText);
   }
 
   /**
@@ -85,11 +103,23 @@ public final class ErrorBodyExtractor {
    * @return a formatted message like {@code "HTTP 404 Not Found: Resource not found"}
    */
   public static String extractMessage(HttpStatusCode status, String body) {
+    return extractMessage(status, body, PeerTextInMessage.WHOLE);
+  }
+
+  /**
+   * Extracts the message from the response body string, carrying as much of the peer's text as
+   * {@code peerText} allows.
+   *
+   * @param peerText how much of the peer's text the message carries; {@code null} means
+   *     {@link PeerTextInMessage#WHOLE}
+   */
+  public static String extractMessage(HttpStatusCode status, String body,
+      @Nullable PeerTextInMessage peerText) {
     String statusPrefix = formatStatus(status);
-    if (body == null || body.isEmpty()) {
+    if (body == null || body.isEmpty() || peerText == PeerTextInMessage.NONE) {
       return statusPrefix;
     }
-    return composeMessage(statusPrefix, body);
+    return composeMessage(statusPrefix, body, peerText);
   }
 
   /**
@@ -167,15 +197,20 @@ public final class ErrorBodyExtractor {
     return "HTTP " + status.value() + " " + reasonPhrase;
   }
 
-  private static String composeMessage(String statusPrefix, String body) {
-    String jsonMessage = tryExtractFromJson(body);
-    if (jsonMessage != null) {
-      return statusPrefix + ": " + jsonMessage;
+  private static String composeMessage(String statusPrefix, String body,
+      @Nullable PeerTextInMessage peerText) {
+    String fields = tryExtractFromJson(body);
+    if (fields == null) {
+      return statusPrefix + ": " + truncate(body.trim());
     }
-    return statusPrefix + ": " + truncate(body.trim());
+    return statusPrefix + ": " + (peerText == PeerTextInMessage.CAPPED ? truncate(fields) : fields);
   }
 
-  private static String tryExtractFromJson(String body) {
+  /**
+   * The error fields of a JSON object body, joined and whole; {@code null} when the body is not a
+   * JSON object or holds none of the fields.
+   */
+  private static @Nullable String tryExtractFromJson(String body) {
     try {
       JsonNode root = JacksonUtil.getDefaultJsonMapper().readTree(body);
       if (root == null || !root.isObject()) {
@@ -199,11 +234,7 @@ public final class ErrorBodyExtractor {
         }
       }
 
-      if (!parts.isEmpty()) {
-        return String.join(" — ", parts);
-      }
-
-      return truncate(body.trim());
+      return parts.isEmpty() ? null : String.join(" — ", parts);
     } catch (Exception e) {
       return null;
     }

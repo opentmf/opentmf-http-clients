@@ -51,7 +51,8 @@ public class JdkRestTemplateFactory extends AbstractRestTemplateFactory {
       var requestFactory = new CloseableJdkClientHttpRequestFactory(builder.build());
       requestFactory.setReadTimeout(readTimeout(properties));
       var restTemplate = new RestTemplate(requestFactory);
-      restTemplate.setErrorHandler(new OpenTmfResponseErrorHandler());
+      restTemplate.setErrorHandler(
+          new OpenTmfResponseErrorHandler(properties.getPeerTextInMessage()));
       applyObservationRegistry(restTemplate);
       addContributedInterceptors(restTemplate);
       addResilienceInterceptor(restTemplate, clientId, properties);
