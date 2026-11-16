@@ -40,7 +40,9 @@ import org.zalando.logbook.autoconfigure.LogbookAutoConfiguration;
  * A {@code bearer-auth.token-url} that cannot be called is refused at start by name, without
  * quoting it; a token URL with a user part keeps working where it works (no client type sends
  * the part), and the part never shows: not in a log line of the library or of Logbook at TRACE,
- * not in an exception message, not in an exception's token URL.
+ * not in an exception message, not in an exception's token URL. A token URL with a query is
+ * called with its query on every client type, and the library never shows the query; Logbook's
+ * TRACE line of the token call hides it when {@code logbook.obfuscate.parameters} names it.
  *
  * <p>The user part below is a canary, not a credential. Released 2.5.1, measured: jdk and netty
  * mint with it (no Authorization header reaches the token endpoint) and print it in the INFO line
@@ -52,6 +54,11 @@ class TokenUrlIT {
 
   private static final String CANARY_PASSWORD = "canarypass7f3a";
   private static final String CANARY_USER_PART = "canaryuser:" + CANARY_PASSWORD;
+  private static final String CANARY_QUERY_VALUE = "canaryquery9b2e";
+  private static final String QUERY_PARAMETER = "client_secret";
+  /** Logbook's query filter, set as the README says: the token URL's parameter, access_token. */
+  private static final String LOGBOOK_QUERY_FILTER =
+      "logbook.obfuscate.parameters=access_token," + QUERY_PARAMETER;
   private static final String PREFIX = "opentmf.http-clients.backend.";
 
   @Configuration(proxyBeanMethods = false)
@@ -108,6 +115,14 @@ class TokenUrlIT {
 
   private static String canaryTokenUrl() {
     return "http://" + CANARY_USER_PART + "@localhost:" + port + "/token";
+  }
+
+  private static String queryCanaryTokenUrl() {
+    return plainTokenUrl() + "?" + QUERY_PARAMETER + "=" + CANARY_QUERY_VALUE;
+  }
+
+  private static String plainTokenUrl() {
+    return "http://localhost:" + port + "/token";
   }
 
   private static void identityProviderAnswers(int status, String body) {
@@ -225,35 +240,87 @@ class TokenUrlIT {
   }
 
   /**
-   * A transport failure of a URL with a user part chains no cause, since the HTTP client's own
-   * exceptions quote the URL with it; its message keeps the cause chain without it. A URL
-   * without one chains the cause as before.
+   * A transport failure of a URL with a user part or a query chains no cause, since the HTTP
+   * client's own exceptions quote the URL with them; its message keeps the cause chain without
+   * them. A URL without either chains the cause as before.
    */
-  @ParameterizedTest(name = "{0} userPart={1}")
-  @CsvSource({"jdk, true", "jdk, false", "apache, true", "apache, false", "netty, true",
-      "netty, false"})
-  void aTransportFailure_chainsTheCause_onlyWithoutAUserPart(String clientType,
-      boolean userPart, CapturedOutput output) {
+  @ParameterizedTest(name = "{0} {1}")
+  @CsvSource({"jdk, plain", "jdk, userPart", "jdk, query", "apache, plain", "apache, query",
+      "apache, userPart", "netty, plain", "netty, userPart", "netty, query"})
+  void aTransportFailure_chainsTheCause_onlyWithoutAUserPartOrQuery(String clientType,
+      String url, CapturedOutput output) {
     mockServer.reset();
     mockServer.when(request().withMethod("POST").withPath("/token"))
         .error(HttpError.error().withDropConnection(true));
-    var tokenUrl = userPart ? canaryTokenUrl() : "http://localhost:" + port + "/token";
+    var tokenUrl = switch (url) {
+      case "userPart" -> canaryTokenUrl();
+      case "query" -> queryCanaryTokenUrl();
+      default -> plainTokenUrl();
+    };
     int from = output.getAll().length();
 
-    contextRunner.withPropertyValues(client(clientType, tokenUrl)).run(context -> {
-      var failure = mint(context);
-      assertThat(failure).isInstanceOf(BearerTokenTransportException.class);
-      assertThat(failure.getMessage()).doesNotContain(CANARY_PASSWORD)
-          .contains("failed at the transport level after 2 attempts: ")
-          .containsPattern("[A-Z][A-Za-z]+(Exception|Error)");
-      if (userPart) {
-        assertThat(failure.getCause()).isNull();
-      } else {
-        assertThat(failure.getCause()).isNotNull();
-      }
-      assertThat(causeChain(failure)).doesNotContain(CANARY_PASSWORD);
-    });
+    contextRunner.withPropertyValues(client(clientType, tokenUrl))
+        .withPropertyValues(LOGBOOK_QUERY_FILTER).run(context -> {
+          var failure = mint(context);
+          assertThat(failure).isInstanceOf(BearerTokenTransportException.class);
+          assertThat(failure.getMessage()).doesNotContain(CANARY_PASSWORD)
+              .doesNotContain(CANARY_QUERY_VALUE)
+              .contains("failed at the transport level after 2 attempts: ")
+              .containsPattern("[A-Z][A-Za-z]+(Exception|Error)");
+          if ("plain".equals(url)) {
+            assertThat(failure.getCause()).isNotNull();
+          } else {
+            assertThat(failure.getCause()).isNull();
+          }
+          assertThat(((BearerTokenTransportException) failure).getTokenUrl())
+              .hasToString(plainTokenUrl());
+          assertThat(causeChain(failure)).doesNotContain(CANARY_PASSWORD)
+              .doesNotContain(CANARY_QUERY_VALUE);
+        });
 
-    assertThat(output.getAll().substring(from)).doesNotContain(CANARY_PASSWORD);
+    assertThat(output.getAll().substring(from)).doesNotContain(CANARY_PASSWORD)
+        .doesNotContain(CANARY_QUERY_VALUE);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"jdk", "apache", "netty"})
+  void aQuery_isSentAsConfigured_andIsNeverShown(String clientType, CapturedOutput output) {
+    identityProviderAnswers(200, "{\"access_token\":\"t\",\"expires_in\":3600}");
+    int from = output.getAll().length();
+
+    contextRunner.withPropertyValues(client(clientType, queryCanaryTokenUrl()))
+        .withPropertyValues(LOGBOOK_QUERY_FILTER)
+        .run(context -> assertThat(mint(context)).isNull());
+
+    var logs = output.getAll().substring(from);
+    assertThat(logs).contains("Bearer token minted from " + plainTokenUrl() + " (")
+        .doesNotContain(CANARY_QUERY_VALUE);
+    var received = mockServer.retrieveRecordedRequests(request().withPath("/token"));
+    assertThat(received).hasSize(1);
+    assertThat(received[0].getFirstQueryStringParameter(QUERY_PARAMETER))
+        .isEqualTo(CANARY_QUERY_VALUE);
+  }
+
+  @ParameterizedTest(name = "{0} {1}")
+  @CsvSource({"jdk, 401", "jdk, 200", "apache, 401", "apache, 200", "netty, 401",
+      "netty, 200"})
+  void aQuery_isNotInAnAnsweredFailure(String clientType, int status, CapturedOutput output) {
+    identityProviderAnswers(status, status == 401 ? "{\"error\":\"invalid_client\"}" : "{}");
+    int from = output.getAll().length();
+
+    contextRunner.withPropertyValues(client(clientType, queryCanaryTokenUrl()))
+        .withPropertyValues(LOGBOOK_QUERY_FILTER).run(context -> {
+          var failure = mint(context);
+          assertThat(failure).isInstanceOf(status == 401
+              ? BearerTokenException.class : BearerTokenResponseException.class);
+          assertThat(failure.getMessage()).contains(plainTokenUrl())
+              .doesNotContain(CANARY_QUERY_VALUE);
+          var tokenUrl = failure instanceof BearerTokenException e
+              ? e.getTokenUrl() : ((BearerTokenResponseException) failure).getTokenUrl();
+          assertThat(tokenUrl).hasToString(plainTokenUrl());
+          assertThat(causeChain(failure)).doesNotContain(CANARY_QUERY_VALUE);
+        });
+
+    assertThat(output.getAll().substring(from)).doesNotContain(CANARY_QUERY_VALUE);
   }
 }

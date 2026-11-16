@@ -44,15 +44,21 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   scheme, a space in the host, an empty host. Measured on 2.5.1: such a client started and
   failed at its first token call, with an untyped `IllegalArgumentException` on `jdk` and a
   `BearerTokenTransportException` after a second attempt on `apache` and `netty`.
-- **A user part of the token URL is no longer shown.** `http://user:password@idp/token` is
-  accepted and works as before (on `jdk` and `netty` the part is never sent; `apache` refuses it
-  at the call, as before), but the log lines of the token calls (`INFO` minted, `DEBUG` before a
-  fetch, transport `WARN`), the messages and `getTokenUrl()` of `BearerTokenException`,
-  `BearerTokenResponseException` and `BearerTokenTransportException`, and the URL handed to a
-  `TokenFetchListener` show the URL without it. Measured on 2.5.1: the `INFO` line of every mint
-  printed it. With such a URL a `BearerTokenTransportException` chains no cause, since the HTTP
-  client's own exceptions quote the URL with the part; its message keeps the cause chain (class
-  names and texts) without it.
+- **A user part, a query or a fragment of the token URL is no longer shown.**
+  `http://user:password@idp/token` and `https://idp/token?p=policy` are accepted and work as
+  before (on `jdk` and `netty` the user part is never sent; `apache` refuses it at the call, as
+  before; a query is sent as configured), but the log lines of the token calls (`INFO` minted,
+  `DEBUG` before a fetch, transport `WARN`), the messages and `getTokenUrl()` of
+  `BearerTokenException`, `BearerTokenResponseException` and `BearerTokenTransportException`, and
+  the URL handed to a `TokenFetchListener` show the URL as its scheme, host, port and path only.
+  Measured on 2.5.1: the `INFO` line of every mint printed the whole URL, and `getTokenUrl()`
+  returned it; code that read `getTokenUrl()` or the listener's URL as the configured URL now gets
+  it without those parts. With such a URL a `BearerTokenTransportException` chains no cause,
+  since the HTTP client's own exceptions quote the URL with them; its message keeps the cause
+  chain (class names and texts) without them. Logbook's line of a token call keeps the query,
+  filtered by the application's `logbook.obfuscate.parameters` (README).
+- **`WebClientUtil.handleError` logs the request's path only** in its `DEBUG` line (it logged the
+  whole URL, a user part and a query included). The library itself does not call it.
 
 - **Logbook logs a token call without the token endpoint's response body.** With Logbook on the
   classpath and `logging-enabled` (the default), the TRACE line of a token call showed the
@@ -119,8 +125,8 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   constructors are unchanged.
 - `TokenStatusFailures` (`opentmf-http-clients-bearer-provider`): turns a status error of a token
   call into its `BearerTokenException`, for code that wires the token clients by hand.
-- `TokenUrls` (`opentmf-http-clients-common`): `isUsable(URI)` and `shown(URI)`, how the library
-  judges and shows a token URL.
+- `TokenUrls` (`opentmf-http-clients-common`): `isUsable(URI)`, `shown(URI)`, `isShownAsItIs(URI)`
+  and `scrubbed(String, URI)`, how the library judges and shows a token URL.
 - `BearerAuthRequirements.requireTokenUrl(clientId, properties)`
   (`opentmf-http-clients-common`): the refusal above, for code that builds clients by hand.
 - **`exchange-timeout`: an opt-in bound on the whole exchange**, from the send to the last byte

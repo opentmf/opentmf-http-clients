@@ -187,7 +187,7 @@ Duration values accept Spring Boot duration strings: `500ms`, `3s`, `1m`, `PT30S
 >
 > If Logbook is not on the classpath, a WARN is logged at startup and no logging interceptor is installed — the client works normally without it.
 >
-> **Token calls are logged without their response body.** A bearer client's token call goes through Logbook like any other call, the request (Logbook's default filters mask the form's `client_secret`, `password` and `refresh_token`), the status and the headers included, but the token endpoint's response body is never handed to Logbook: `<token response body withheld; bearer-auth.log-response-body: true logs it>` stands in its place. An identity provider may echo the request form, and a token answer holds the token itself. This holds on every client type and does not depend on, or change, your Logbook configuration; the client's own calls keep their bodies. `bearer-auth.log-response-body: true` brings the body back, for debugging a token endpoint.
+> **Token calls are logged without their response body.** A bearer client's token call goes through Logbook like any other call, the request (Logbook's default filters mask the form's `client_secret`, `password` and `refresh_token`), the status and the headers included, but the token endpoint's response body is never handed to Logbook: `<token response body withheld; bearer-auth.log-response-body: true logs it>` stands in its place. An identity provider may echo the request form, and a token answer holds the token itself. This holds on every client type and does not depend on, or change, your Logbook configuration; the client's own calls keep their bodies. `bearer-auth.log-response-body: true` brings the body back, for debugging a token endpoint. The request line shows the token URL with its query, filtered by your Logbook's query filter like any other call: Logbook masks only `access_token` by default, so if a token URL's query carries a value that must not be logged, name its parameters in `logbook.obfuscate.parameters` (for example `logbook.obfuscate.parameters: access_token,client_secret`). Setting that list replaces Logbook's default, so keep `access_token` in it.
 
 ### Bearer Auth Client (Minimal)
 
@@ -784,16 +784,18 @@ What to check when upgrading:
   host.` On 2.5.1 such a client started and failed at its first token call: an untyped
   `IllegalArgumentException` on `jdk`, a `BearerTokenTransportException` after a second, useless
   attempt on `apache` and `netty` (measured).
-- **A user part of the token URL is no longer shown.** A token URL such as
-  `http://user:password@idp/token` is accepted as before and works where it worked (`jdk`, `netty`:
-  no client type sends the part; `apache` refuses such a URL at the call, as before), but the
-  library never shows the part: not in its log lines (the `INFO` of a minted token, the `DEBUG`
-  before a fetch, the transport `WARN`), not in the messages or `getTokenUrl()` of
-  `BearerTokenException`, `BearerTokenResponseException` and `BearerTokenTransportException`, not
-  to a `TokenFetchListener`, not in a stack trace (with such a URL a
-  `BearerTokenTransportException` chains no cause, which would quote the URL; its message keeps
-  the cause chain without the part). On 2.5.1 the `INFO` line of every mint printed it
-  (measured). Put a credential in `client-id` / `client-secret` or `form-data`, never in the URL.
+- **A user part, a query or a fragment of the token URL is no longer shown.** A token URL such as
+  `http://user:password@idp/token` or `https://idp/token?p=policy` is accepted as before and works
+  where it worked (`jdk`, `netty`: no client type sends the user part; `apache` refuses such a URL
+  at the call, as before; a query is sent as configured on every client type), but the library
+  shows the URL as its scheme, host, port and path only: in its log lines (the `INFO` of a minted
+  token, the `DEBUG` before a fetch, the transport `WARN`), in the messages and `getTokenUrl()` of
+  `BearerTokenException`, `BearerTokenResponseException` and `BearerTokenTransportException`, to a
+  `TokenFetchListener`, and in a stack trace (with such a URL a `BearerTokenTransportException`
+  chains no cause, which would quote the URL; its message keeps the cause chain without those
+  parts). On 2.5.1 the `INFO` line of every mint printed the whole URL (measured). Code that read
+  `getTokenUrl()` as the configured URL gets it without those parts. Put a credential in
+  `client-id` / `client-secret` or `form-data`, never in the URL.
 - **Logbook's TRACE line of a token call no longer shows the response body** (when Logbook is on
   the classpath and `logging-enabled`, the default): a marker stands in its place; the request,
   the status and the headers of the line are unchanged, and the client's own calls keep their
