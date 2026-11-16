@@ -52,7 +52,7 @@ class PeerTextInMessageIT {
       "{\"detail\":\"" + LONG_DETAIL + "\",\"title\":\"Bad Thing\"}";
   /** A non-string field: the message takes its JSON text, which Jackson writes compact. */
   private static final String ERROR_OBJECT = IntStream.range(0, 300)
-      .mapToObj(i -> "\"entry-%04d\"".formatted(i))
+      .mapToObj("\"entry-%04d\""::formatted)
       .collect(Collectors.joining(",", "{\"items\":[", "]}"));
   private static final String OBJECT_FIELD_BODY = "{\"error\":" + ERROR_OBJECT + "}";
   private static final String NOT_FOUND_BODY =

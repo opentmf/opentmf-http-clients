@@ -43,15 +43,15 @@ public final class OpenTmfRestClientStatusHandler {
    */
   public static RestClient.ResponseSpec.ErrorHandler errorHandler(
       @Nullable PeerTextInMessage peerText) {
-    return (request, response) -> handleError(request, response, peerText);
+    return (request, response) -> handleError(response, peerText);
   }
 
   static void handleError(HttpRequest request, ClientHttpResponse response)
       throws IOException {
-    handleError(request, response, PeerTextInMessage.WHOLE);
+    handleError(response, PeerTextInMessage.WHOLE);
   }
 
-  static void handleError(HttpRequest request, ClientHttpResponse response,
+  private static void handleError(ClientHttpResponse response,
       @Nullable PeerTextInMessage peerText) throws IOException {
     var status = response.getStatusCode();
     var headers = response.getHeaders();

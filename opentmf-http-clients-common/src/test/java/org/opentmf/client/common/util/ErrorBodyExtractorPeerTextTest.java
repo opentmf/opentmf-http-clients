@@ -28,7 +28,7 @@ class ErrorBodyExtractorPeerTextTest {
   private static final String LONG = "x".repeat(CAP + 1000);
   /** A non-string error field over the cap; Jackson writes its JSON text compact. */
   private static final String ERROR_OBJECT = IntStream.range(0, 300)
-      .mapToObj(i -> "\"entry-%04d\"".formatted(i))
+      .mapToObj("\"entry-%04d\""::formatted)
       .collect(Collectors.joining(",", "{\"items\":[", "]}"));
   private static final byte[] BINARY = {0x00, 0x01, 0x02, (byte) 0xFF, (byte) 0xFE};
 
