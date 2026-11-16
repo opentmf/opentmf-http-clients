@@ -129,6 +129,7 @@ Each client can override this via a per-client `client-type` property. The three
 | `ssl-protocol` | string | `TLS` | SSL/TLS protocol version (`TLS`, `TLSv1.2`, `TLSv1.3`) |
 | `logging-enabled` | boolean | `true` | Enable Logbook request/response logging for this client |
 | `compression-enabled` | boolean | `true` | Enable HTTP response compression (gzip) |
+| `peer-text-in-message` | string | `whole` | How much of a peer's error text the exception message carries: `whole`, `capped` or `none` — see [How much of the peer's text the message carries](#how-much-of-the-peers-text-the-message-carries-peer-text-in-message) |
 | `fixed-headers` | map | *(none)* | Headers added to every API request as defaults (a per-request value wins). Never sent on the token call — see [Headers on the token call](#headers-on-the-token-call-bearer-authheaders) |
 | `proxy-config` | object | *(none)* | Forward proxy settings (`proxy-host`, `proxy-port`, `non-proxy-hosts`) |
 | `certificates` | object | *(none)* | mTLS key-store and trust-store |
@@ -187,7 +188,7 @@ Duration values accept Spring Boot duration strings: `500ms`, `3s`, `1m`, `PT30S
 >
 > If Logbook is not on the classpath, a WARN is logged at startup and no logging interceptor is installed — the client works normally without it.
 >
-> **Token calls are logged without their response body.** A bearer client's token call goes through Logbook like any other call, the request (Logbook's default filters mask the form's `client_secret`, `password` and `refresh_token`), the status and the headers included, but the token endpoint's response body is never handed to Logbook: `<token response body withheld; bearer-auth.log-response-body: true logs it>` stands in its place. An identity provider may echo the request form, and a token answer holds the token itself. This holds on every client type and does not depend on, or change, your Logbook configuration; the client's own calls keep their bodies. `bearer-auth.log-response-body: true` brings the body back, for debugging a token endpoint. The request line shows the token URL with its query, filtered by your Logbook's query filter like any other call: Logbook masks only `access_token` by default, so if a token URL's query carries a value that must not be logged, name its parameters in `logbook.obfuscate.parameters` (for example `logbook.obfuscate.parameters: access_token,client_secret`). Setting that list replaces Logbook's default, so keep `access_token` in it.
+> **Token calls are logged without their response body.** A bearer client's token call goes through Logbook like any other call, the request (Logbook's default filters mask the form's `client_secret`, `password` and `refresh_token`), the status and the headers included, but the token endpoint's response body is never handed to Logbook: `<token response body withheld; bearer-auth.log-response-body: true logs it>` stands in its place. An identity provider may echo the request form, and a token answer holds the token itself. This holds on every client type and does not depend on, or change, your Logbook configuration; the client's own calls keep their bodies. `bearer-auth.log-response-body: true` brings the body back, for debugging a token endpoint. The request line shows the token URL with its query, filtered by your Logbook's query filter like any other call: Logbook masks only `access_token` by default, so if a token URL's query carries a value that must not be logged, name its parameters in `logbook.obfuscate.parameters` (for example `logbook.obfuscate.parameters: access_token,client_secret`). Setting that list replaces Logbook's default, so keep `access_token` in it. This is the advice for Logbook's own query filter: an application whose platform installs its own query filter follows that platform's setting instead, since there a short `logbook.obfuscate.parameters` list may replace a longer packaged one.
 
 ### Bearer Auth Client (Minimal)
 
@@ -1050,6 +1051,25 @@ webClient.get().uri("/catalog/123")
 ```
 
 The error message is intelligently extracted from the response body — the library recognizes RFC 7807 Problem Details, TMF Open API, OAuth2, Spring Boot, and generic JSON error formats, with safe fallbacks for plain text and binary bodies.
+
+#### How much of the peer's text the message carries (`peer-text-in-message`)
+
+The message is `HTTP <status> <reason>: <text>`. For a JSON error body, `<text>` is the first of the fields `detail`, `error_description`, `message`, `reason`, `error`, `msg` and `description`, followed by ` — ` and the first of `title`, `status` and `code`. A field that is not a string, an object or an array, goes in as its JSON text. Any other body is cut at 2000 characters followed by `...`. The message is the peer's text: an application that logs it, puts it into its own answer or stores it carries whatever the peer sent. Each client chooses how much of it the message carries:
+
+```yaml
+opentmf:
+  http-clients:
+    my-client:
+      peer-text-in-message: capped   # whole (default) | capped | none
+```
+
+| Value | The message | What a reader of the message loses |
+|---|---|---|
+| `whole` (default) | The fields as above, each whole, whatever its length. This is the message of every earlier release. | Nothing. |
+| `capped` | The same text, cut at 2000 characters followed by `...`. The cut applies to the joined text and to a non-string field's JSON text alike. | The end of a peer's text longer than 2000 characters, the title included when the first field already fills the 2000. |
+| `none` | `HTTP <status> <reason>` only. | All of the peer's text. |
+
+In every value `getResponseBody()` keeps the whole body, and the status, the headers, `Retry-After` and `OpenTmfClientNotFoundException` for a `404` are unchanged: only `getMessage()` differs. **An application that reads the peer's sentence out of the message must not choose `none`**, for example one that strips the `HTTP <status> <reason>: ` prefix to show or match the peer's own words. Read `getResponseBody()` instead, which holds the peer's answer in every value. Under `capped`, such an application sees the sentence cut when it is longer than 2000 characters.
 
 #### Handling 404 as empty result
 
