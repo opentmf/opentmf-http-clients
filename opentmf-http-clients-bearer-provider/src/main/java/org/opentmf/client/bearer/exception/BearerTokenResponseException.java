@@ -46,7 +46,10 @@ public class BearerTokenResponseException extends OpenTmfClientResponseException
     }
   }
 
-  /** The token endpoint that answered, without a user part of the configured URL. */
+  /**
+   * The token endpoint that answered, without a user part, a query or a fragment of the configured
+   * URL.
+   */
   private final URI tokenUrl;
 
   /** The configured {@code bearer-auth.token-field} the token was expected in. */

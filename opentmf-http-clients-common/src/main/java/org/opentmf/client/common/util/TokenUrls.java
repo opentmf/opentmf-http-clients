@@ -7,11 +7,16 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * How the library judges and shows a {@code bearer-auth.token-url}. A token URL may carry a user
- * part ({@code http://user:password@host/token}); no client type sends it, and the library never
- * shows it: every log line and exception message that names the token URL uses
- * {@link #shown(URI)}.
+ * part ({@code http://user:password@host/token}), a query ({@code ?p=policy}) and a fragment;
+ * any of them can hold a credential. No client type sends the user part, the query is sent as
+ * configured and the fragment never is; the library shows none of them: every log line and
+ * exception message that names the token URL uses {@link #shown(URI)}, and a text of the HTTP
+ * client that quotes the URL goes through {@link #scrubbed(String, URI)}.
  */
 public final class TokenUrls {
+
+  /** What {@link #shown(URI)} shows in place of an opaque URL's scheme-specific part. */
+  public static final String WITHHELD = "withheld";
 
   private static final Set<String> SCHEMES = Set.of("http", "https");
 
@@ -31,40 +36,65 @@ public final class TokenUrls {
   }
 
   /**
-   * The URL as the library shows it: the same URL without its user part. A URL without one is
-   * returned as it is.
+   * The URL as the library shows it: its scheme, host, port and raw path, without a user part,
+   * a query or a fragment. A URL without any of them is returned as it is (the same instance);
+   * an opaque URL ({@code mailto:x@y}) is shown as its scheme and {@value #WITHHELD}.
    */
   public static @Nullable URI shown(@Nullable URI url) {
-    if (url == null || url.getRawUserInfo() == null || url.getRawAuthority() == null) {
+    if (url == null || isShownAsItIs(url)) {
       return url;
     }
+    if (url.isOpaque()) {
+      return URI.create(url.getScheme() + ":" + WITHHELD);
+    }
+    var shown = new StringBuilder();
+    if (url.getScheme() != null) {
+      shown.append(url.getScheme()).append(':');
+    }
     var authority = url.getRawAuthority();
-    var shown = new StringBuilder()
-        .append(url.getScheme()).append("://")
-        .append(authority.substring(authority.lastIndexOf('@') + 1));
+    if (authority != null) {
+      shown.append("//").append(authority.substring(authority.lastIndexOf('@') + 1));
+    }
     if (url.getRawPath() != null) {
       shown.append(url.getRawPath());
-    }
-    if (url.getRawQuery() != null) {
-      shown.append('?').append(url.getRawQuery());
-    }
-    if (url.getRawFragment() != null) {
-      shown.append('#').append(url.getRawFragment());
     }
     return URI.create(shown.toString());
   }
 
   /**
-   * The text without the URL's user part, for a text the library did not write itself (an
-   * exception message of the HTTP client that quotes the URL). A URL without one leaves the
-   * text as it is.
+   * Whether {@link #shown(URI)} returns the URL as it is: a URL that is not opaque and has no
+   * user part, no query and no fragment.
+   */
+  public static boolean isShownAsItIs(URI url) {
+    return !url.isOpaque() && url.getRawUserInfo() == null && url.getRawQuery() == null
+        && url.getRawFragment() == null;
+  }
+
+  /**
+   * The text without the URL's user part, query and fragment, raw or decoded, for a text the
+   * library did not write itself (an exception message of the HTTP client that quotes the URL).
+   * A query is removed with its {@code ?} and a fragment with its {@code #}, wherever they appear
+   * (never on their own, so a short value cannot cut words out of the text). A URL without any of
+   * them leaves the text as it is.
    */
   public static String scrubbed(String text, @Nullable URI url) {
-    if (url == null || url.getRawUserInfo() == null) {
+    if (url == null) {
       return text;
     }
-    var scrubbed = text.replace(url.getRawUserInfo() + "@", "");
-    var decoded = url.getUserInfo();
-    return decoded == null ? scrubbed : scrubbed.replace(decoded + "@", "");
+    var scrubbed = removed(text, url.getRawUserInfo(), url.getUserInfo(), "", "@");
+    scrubbed = removed(scrubbed, url.getRawQuery(), url.getQuery(), "?", "");
+    return removed(scrubbed, url.getRawFragment(), url.getFragment(), "#", "");
+  }
+
+  private static String removed(String text, @Nullable String raw, @Nullable String decoded,
+      String before, String after) {
+    var result = text;
+    if (raw != null && !raw.isEmpty()) {
+      result = result.replace(before + raw + after, "");
+    }
+    if (decoded != null && !decoded.isEmpty()) {
+      result = result.replace(before + decoded + after, "");
+    }
+    return result;
   }
 }

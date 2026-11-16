@@ -35,8 +35,8 @@ public class BearerTokenException extends OpenTmfClientResponseException {
   private static final long serialVersionUID = 4L;
 
   /**
-   * The token endpoint that answered, without a user part of the configured URL;
-   * {@code null} on the constructors without one.
+   * The token endpoint that answered, without a user part, a query or a fragment of the
+   * configured URL; {@code null} on the constructors without one.
    */
   private final @Nullable URI tokenUrl;
 

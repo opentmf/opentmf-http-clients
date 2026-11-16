@@ -27,7 +27,8 @@ public interface TokenFetchListener {
   }
 
   /**
-   * @param tokenUrl the token endpoint, without a user part of the configured URL
+   * @param tokenUrl the token endpoint, without a user part, a query or a fragment of the
+   *                 configured URL
    * @param outcome  how the mint ended
    */
   void onTokenFetch(URI tokenUrl, Outcome outcome);

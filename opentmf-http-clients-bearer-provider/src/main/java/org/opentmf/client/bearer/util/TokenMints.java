@@ -293,8 +293,8 @@ public final class TokenMints {
 
   /**
    * A copy of a token failure for one caller, with its own stack trace; any other failure as it
-   * is. A transport failure whose cause was withheld (a token URL with a user part) cannot be
-   * rebuilt and is returned as it is.
+   * is. A transport failure whose cause was withheld (a token URL with a user part, a query or a
+   * fragment) cannot be rebuilt and is returned as it is.
    */
   static Throwable forCaller(Throwable failure) {
     if (failure instanceof BearerTokenTransportException e && e.getCause() != null) {
