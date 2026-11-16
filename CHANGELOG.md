@@ -57,6 +57,8 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   since the HTTP client's own exceptions quote the URL with them; its message keeps the cause
   chain (class names and texts) without them. Logbook's line of a token call keeps the query,
   filtered by the application's `logbook.obfuscate.parameters` (README).
+- **`WebClientUtil.handleError` logs the request's path only** in its `DEBUG` line (it logged the
+  whole URL, a user part and a query included). The library itself does not call it.
 
 - **Logbook logs a token call without the token endpoint's response body.** With Logbook on the
   classpath and `logging-enabled` (the default), the TRACE line of a token call showed the

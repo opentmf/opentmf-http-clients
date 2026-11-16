@@ -36,7 +36,9 @@ public final class WebClientUtil {
       Class<? extends OpenTmfClientResponseException> exceptionClass) {
     var request = clientResponse.request();
     var httpStatus = clientResponse.statusCode();
-    log.debug("Handling {} for {} {}", httpStatus, request.getMethod(), request.getURI());
+    // the path only: a user part or a query of the URL may carry a credential
+    log.debug("Handling {} for {} {}", httpStatus, request.getMethod(),
+        request.getURI().getRawPath());
     return clientResponse
         .bodyToMono(String.class)
         .switchIfEmpty(Mono.defer(
