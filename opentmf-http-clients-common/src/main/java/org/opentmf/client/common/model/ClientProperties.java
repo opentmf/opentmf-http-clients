@@ -183,6 +183,16 @@ public class ClientProperties {
    */
   private ClientType clientType;
 
+  /**
+   * How much of a peer's error text the message of this client's
+   * {@code OpenTmfClientResponseException} carries: {@code whole} (the field of a JSON error
+   * body taken whole, whatever its length), {@code capped} (the peer's text cut at 2000
+   * characters) or {@code none} (the status and reason only). The exception's response body,
+   * status, headers and {@code Retry-After} are the same in every value. Default {@code whole},
+   * the behaviour of earlier releases.
+   */
+  private PeerTextInMessage peerTextInMessage = PeerTextInMessage.WHOLE;
+
   @AssertTrue(message = "Cannot specify both basic-auth and bearer-auth")
   @SuppressWarnings("unused") // invoked reflectively by Bean Validation
   private boolean isAuthMutuallyExclusive() {

@@ -2,8 +2,10 @@ package org.opentmf.client.rest.util;
 
 import java.io.IOException;
 import lombok.Generated;
+import org.jspecify.annotations.Nullable;
 import org.opentmf.client.common.exception.OpenTmfClientNotFoundException;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
+import org.opentmf.client.common.model.PeerTextInMessage;
 import org.opentmf.client.common.util.ErrorBodyExtractor;
 import org.opentmf.client.common.util.HttpClientUtil;
 import org.springframework.http.HttpRequest;
@@ -29,18 +31,35 @@ public final class OpenTmfRestClientStatusHandler {
    * to {@link OpenTmfClientResponseException} (and 404 to {@link OpenTmfClientNotFoundException}).
    */
   public static RestClient.ResponseSpec.ErrorHandler errorHandler() {
-    return OpenTmfRestClientStatusHandler::handleError;
+    return errorHandler(PeerTextInMessage.WHOLE);
+  }
+
+  /**
+   * As {@link #errorHandler()}, its messages carrying as much of the peer's text as
+   * {@code peerText} allows.
+   *
+   * @param peerText the client's {@code peer-text-in-message}; {@code null} means
+   *     {@link PeerTextInMessage#WHOLE}
+   */
+  public static RestClient.ResponseSpec.ErrorHandler errorHandler(
+      @Nullable PeerTextInMessage peerText) {
+    return (request, response) -> handleError(request, response, peerText);
   }
 
   static void handleError(HttpRequest request, ClientHttpResponse response)
       throws IOException {
+    handleError(request, response, PeerTextInMessage.WHOLE);
+  }
+
+  static void handleError(HttpRequest request, ClientHttpResponse response,
+      @Nullable PeerTextInMessage peerText) throws IOException {
     var status = response.getStatusCode();
     var headers = response.getHeaders();
     byte[] body = response.getBody().readAllBytes();
     var contentType = ErrorBodyExtractor.contentTypeOf(headers);
     String rawBody = ErrorBodyExtractor.decodeAsText(body,
         ErrorBodyExtractor.charsetOf(contentType));
-    String message = ErrorBodyExtractor.extractMessage(status, body, contentType);
+    String message = ErrorBodyExtractor.extractMessage(status, body, contentType, peerText);
 
     OpenTmfClientResponseException ex = status.isSameCodeAs(HttpStatus.NOT_FOUND)
         ? new OpenTmfClientNotFoundException(status, message, rawBody)

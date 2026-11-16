@@ -23,6 +23,7 @@ import org.jspecify.annotations.Nullable;
 import org.opentmf.client.common.exception.OpenTmfClientNotFoundException;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.client.common.model.ClientProperties;
+import org.opentmf.client.common.model.PeerTextInMessage;
 import org.opentmf.client.common.util.ErrorBodyExtractor;
 import org.opentmf.client.common.util.HttpClientUtil;
 import org.springframework.http.HttpHeaders;
@@ -129,7 +130,7 @@ public final class WebClientConfigUtil {
           }
         })
         .clientConnector(new ReactorClientHttpConnector(httpClient))
-        .filter(errorWrappingFilter())
+        .filter(errorWrappingFilter(clientProperties.getPeerTextInMessage()))
         .exchangeStrategies(buildExchangeStrategies());
     if (clientProperties.getExchangeTimeout() != null) {
       // innermost: the bound starts at the send and covers the body as every filter reads it
@@ -148,6 +149,17 @@ public final class WebClientConfigUtil {
    * Applied automatically on all library-created {@code WebClient} instances.
    */
   public static ExchangeFilterFunction errorWrappingFilter() {
+    return errorWrappingFilter(PeerTextInMessage.WHOLE);
+  }
+
+  /**
+   * As {@link #errorWrappingFilter()}, its messages carrying as much of the peer's text as
+   * {@code peerText} allows.
+   *
+   * @param peerText the client's {@code peer-text-in-message}; {@code null} means
+   *     {@link PeerTextInMessage#WHOLE}
+   */
+  public static ExchangeFilterFunction errorWrappingFilter(@Nullable PeerTextInMessage peerText) {
     return ExchangeFilterFunction.ofResponseProcessor(response -> {
       if (!response.statusCode().isError()) {
         return Mono.just(response);
@@ -160,7 +172,8 @@ public final class WebClientConfigUtil {
           .flatMap(body -> {
             String rawBody = ErrorBodyExtractor.decodeAsText(body,
                 ErrorBodyExtractor.charsetOf(contentType));
-            String message = ErrorBodyExtractor.extractMessage(status, body, contentType);
+            String message = ErrorBodyExtractor.extractMessage(status, body, contentType,
+                peerText);
             OpenTmfClientResponseException ex = status.isSameCodeAs(HttpStatus.NOT_FOUND)
                 ? new OpenTmfClientNotFoundException(status, message, rawBody)
                 : new OpenTmfClientResponseException(status, message, rawBody);
