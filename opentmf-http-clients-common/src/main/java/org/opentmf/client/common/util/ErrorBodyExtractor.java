@@ -24,11 +24,17 @@ import tools.jackson.databind.JsonNode;
  * gracefully for plain text, binary, or empty bodies.
  *
  * <p>The methods without a {@link PeerTextInMessage} argument give the
- * {@link PeerTextInMessage#WHOLE} message, the behaviour of earlier releases.</p>
+ * {@link PeerTextInMessage#WHOLE} message, the behaviour of earlier releases. The methods without
+ * a cap length cut at {@link #MAX_BODY_LENGTH}, as every earlier release did.</p>
  */
 public final class ErrorBodyExtractor {
 
+  /** The default cap length: where a non-JSON body, and a {@code capped} peer's text, is cut. */
   public static final int MAX_BODY_LENGTH = 2000;
+  /** The shortest cap length a client may set ({@code peer-text-cap-length}). */
+  public static final int MIN_CAP_LENGTH = 100;
+  /** The longest cap length a client may set ({@code peer-text-cap-length}). */
+  public static final int MAX_CAP_LENGTH = 100_000;
   public static final String NON_TEXT_BODY = "[non-text response body]";
 
   private static final List<String> MESSAGE_FIELDS = List.of(
@@ -86,6 +92,23 @@ public final class ErrorBodyExtractor {
    */
   public static String extractMessage(HttpStatusCode status, byte[] body,
       @Nullable MediaType contentType, @Nullable PeerTextInMessage peerText) {
+    return extractMessage(status, body, contentType, peerText, MAX_BODY_LENGTH);
+  }
+
+  /**
+   * Extracts the message, carrying as much of the peer's text as {@code peerText} allows and
+   * cutting at {@code capLength} where it cuts.
+   *
+   * @param contentType the response {@code Content-Type}, or {@code null} if absent
+   * @param peerText how much of the peer's text the message carries; {@code null} means
+   *     {@link PeerTextInMessage#WHOLE}
+   * @param capLength where a non-JSON body, and a {@link PeerTextInMessage#CAPPED} peer's text,
+   *     is cut; see {@link #requireCapLength(int)}
+   * @throws IllegalArgumentException when {@code capLength} is outside the bounds
+   */
+  public static String extractMessage(HttpStatusCode status, byte[] body,
+      @Nullable MediaType contentType, @Nullable PeerTextInMessage peerText, int capLength) {
+    requireCapLength(capLength);
     String statusPrefix = formatStatus(status);
     if (body == null || body.length == 0 || peerText == PeerTextInMessage.NONE) {
       return statusPrefix;
@@ -94,7 +117,7 @@ public final class ErrorBodyExtractor {
     if (text == null) {
       return statusPrefix + ": " + NON_TEXT_BODY;
     }
-    return composeMessage(statusPrefix, text, peerText);
+    return composeMessage(statusPrefix, text, peerText, capLength);
   }
 
   /**
@@ -115,11 +138,41 @@ public final class ErrorBodyExtractor {
    */
   public static String extractMessage(HttpStatusCode status, String body,
       @Nullable PeerTextInMessage peerText) {
+    return extractMessage(status, body, peerText, MAX_BODY_LENGTH);
+  }
+
+  /**
+   * Extracts the message from the response body string, carrying as much of the peer's text as
+   * {@code peerText} allows and cutting at {@code capLength} where it cuts.
+   *
+   * @param peerText how much of the peer's text the message carries; {@code null} means
+   *     {@link PeerTextInMessage#WHOLE}
+   * @param capLength where a non-JSON body, and a {@link PeerTextInMessage#CAPPED} peer's text,
+   *     is cut; see {@link #requireCapLength(int)}
+   * @throws IllegalArgumentException when {@code capLength} is outside the bounds
+   */
+  public static String extractMessage(HttpStatusCode status, String body,
+      @Nullable PeerTextInMessage peerText, int capLength) {
+    requireCapLength(capLength);
     String statusPrefix = formatStatus(status);
     if (body == null || body.isEmpty() || peerText == PeerTextInMessage.NONE) {
       return statusPrefix;
     }
-    return composeMessage(statusPrefix, body, peerText);
+    return composeMessage(statusPrefix, body, peerText, capLength);
+  }
+
+  /**
+   * Returns {@code capLength} when it lies between {@link #MIN_CAP_LENGTH} and
+   * {@link #MAX_CAP_LENGTH}, both included.
+   *
+   * @throws IllegalArgumentException naming {@code peer-text-cap-length} otherwise
+   */
+  public static int requireCapLength(int capLength) {
+    if (capLength < MIN_CAP_LENGTH || capLength > MAX_CAP_LENGTH) {
+      throw new IllegalArgumentException("peer-text-cap-length must be between " + MIN_CAP_LENGTH
+          + " and " + MAX_CAP_LENGTH + ", was " + capLength);
+    }
+    return capLength;
   }
 
   /**
@@ -198,12 +251,13 @@ public final class ErrorBodyExtractor {
   }
 
   private static String composeMessage(String statusPrefix, String body,
-      @Nullable PeerTextInMessage peerText) {
+      @Nullable PeerTextInMessage peerText, int capLength) {
     String fields = tryExtractFromJson(body);
     if (fields == null) {
-      return statusPrefix + ": " + truncate(body.trim());
+      return statusPrefix + ": " + truncate(body.trim(), capLength);
     }
-    return statusPrefix + ": " + (peerText == PeerTextInMessage.CAPPED ? truncate(fields) : fields);
+    return statusPrefix + ": "
+        + (peerText == PeerTextInMessage.CAPPED ? truncate(fields, capLength) : fields);
   }
 
   /**
@@ -261,10 +315,10 @@ public final class ErrorBodyExtractor {
     return true;
   }
 
-  private static String truncate(String text) {
-    if (text.length() <= MAX_BODY_LENGTH) {
+  private static String truncate(String text, int capLength) {
+    if (text.length() <= capLength) {
       return text;
     }
-    return text.substring(0, MAX_BODY_LENGTH) + "...";
+    return text.substring(0, capLength) + "...";
   }
 }

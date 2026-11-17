@@ -2,6 +2,8 @@ package org.opentmf.client.common.model;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Positive;
@@ -186,12 +188,22 @@ public class ClientProperties {
   /**
    * How much of a peer's error text the message of this client's
    * {@code OpenTmfClientResponseException} carries: {@code whole} (the field of a JSON error
-   * body taken whole, whatever its length), {@code capped} (the peer's text cut at 2000
-   * characters) or {@code none} (the status and reason only). The exception's response body,
-   * status, headers and {@code Retry-After} are the same in every value. Default {@code whole},
-   * the behaviour of earlier releases.
+   * body taken whole, whatever its length), {@code capped} (the peer's text cut at
+   * {@code peer-text-cap-length} characters) or {@code none} (the status and reason only). The
+   * exception's response body, status, headers and {@code Retry-After} are the same in every
+   * value. Default {@code whole}, the behaviour of earlier releases.
    */
   private PeerTextInMessage peerTextInMessage = PeerTextInMessage.WHOLE;
+
+  /**
+   * Where this client's exception message cuts a peer's text: a {@code capped} peer's text, and a
+   * body that is not a JSON error object in every value but {@code none}, is cut after this many
+   * characters followed by {@code ...}. Between 100 and 100000; a value outside them stops the
+   * application at start. Default 2000, the cut of every earlier release.
+   */
+  @Min(value = 100, message = "peer-text-cap-length must be between 100 and 100000")
+  @Max(value = 100_000, message = "peer-text-cap-length must be between 100 and 100000")
+  private int peerTextCapLength = 2000;
 
   @AssertTrue(message = "Cannot specify both basic-auth and bearer-auth")
   @SuppressWarnings("unused") // invoked reflectively by Bean Validation

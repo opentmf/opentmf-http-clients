@@ -278,6 +278,26 @@ class ClientPropertiesValidatorTest {
   }
 
   @Test
+  void peerTextCapLength_defaultIsSound_outsideTheBoundsIsFlagged() {
+    var properties = apacheDefaults();
+    assertThat(properties.getPeerTextCapLength()).isEqualTo(2000);
+    assertThat(fields(ClientPropertiesValidator.validate(ClientType.APACHE, properties)))
+        .doesNotContain("peer-text-cap-length");
+
+    properties.setPeerTextCapLength(100);
+    assertThat(fields(ClientPropertiesValidator.validate(ClientType.APACHE, properties)))
+        .doesNotContain("peer-text-cap-length");
+
+    properties.setPeerTextCapLength(99);
+    assertThat(ClientPropertiesValidator.validate(ClientType.APACHE, properties))
+        .contains(new Finding("peer-text-cap-length", "must be between 100 and 100000"));
+
+    properties.setPeerTextCapLength(100_001);
+    assertThat(fields(ClientPropertiesValidator.validate(ClientType.APACHE, properties)))
+        .contains("peer-text-cap-length");
+  }
+
+  @Test
   void finding_toString_isReadable() {
     assertThat(new Finding("base-url", "must be absolute"))
         .hasToString("base-url: must be absolute");

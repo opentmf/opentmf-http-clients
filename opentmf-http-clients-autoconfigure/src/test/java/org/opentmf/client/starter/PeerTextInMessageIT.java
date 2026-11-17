@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockserver.configuration.ConfigurationProperties;
 import org.mockserver.integration.ClientAndServer;
 import org.opentmf.client.common.exception.OpenTmfClientNotFoundException;
@@ -204,10 +205,61 @@ class PeerTextInMessageIT {
           .get().uri(uri).retrieve().body(String.class));
       assertFailure(none, 400, NONE.longField(), LONG_FIELD_BODY, null);
 
+      properties.setPeerTextInMessage(PeerTextInMessage.CAPPED);
+      properties.setPeerTextCapLength(300);
+      var capped = catchThrowable(() -> registrar.createRestClient(restTemplate, properties)
+          .get().uri(uri).retrieve().body(String.class));
+      assertFailure(capped, 400, BAD_REQUEST + ": " + LONG_DETAIL.substring(0, 300) + "...",
+          LONG_FIELD_BODY, null);
+
       var today = catchThrowable(() -> registrar.createRestClient(restTemplate)
           .get().uri(uri).retrieve().body(String.class));
       assertFailure(today, 400, UNSET.longField(), LONG_FIELD_BODY, null);
     });
+  }
+
+  /**
+   * {@code peer-text-cap-length} sets where {@code capped} cuts, on every client type and every
+   * client the library builds; {@code whole} still takes a JSON field whole.
+   */
+  @ParameterizedTest(name = "{0}")
+  @ValueSource(strings = {"jdk", "apache", "netty"})
+  void theCapLengthIsTheClientsSetting(String clientType) {
+    var prefix = "opentmf.http-clients.backend.";
+    contextRunner.withPropertyValues(client(clientType, "capped"))
+        .withPropertyValues(prefix + "peer-text-cap-length=300")
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          for (Throwable failure : failedGets(context, clientType, "/long-field")) {
+            assertFailure(failure, 400, BAD_REQUEST + ": " + LONG_DETAIL.substring(0, 300) + "...",
+                LONG_FIELD_BODY, null);
+          }
+          for (Throwable failure : failedGets(context, clientType, "/object-field")) {
+            assertFailure(failure, 503, UNAVAILABLE + ": " + ERROR_OBJECT.substring(0, 300) + "...",
+                OBJECT_FIELD_BODY, Duration.ofSeconds(1));
+          }
+        });
+    contextRunner.withPropertyValues(client(clientType, "whole"))
+        .withPropertyValues(prefix + "peer-text-cap-length=300")
+        .run(context -> {
+          for (Throwable failure : failedGets(context, clientType, "/long-field")) {
+            assertFailure(failure, 400, WHOLE.longField(), LONG_FIELD_BODY, null);
+          }
+        });
+  }
+
+  /** A length outside the bounds stops the application at start, naming the setting. */
+  @ParameterizedTest(name = "{0}")
+  @ValueSource(ints = {99, 100_001})
+  void aCapLengthOutsideTheBounds_isRefusedAtStart(int length) {
+    contextRunner.withPropertyValues(client("jdk", "capped"))
+        .withPropertyValues("opentmf.http-clients.backend.peer-text-cap-length=" + length)
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure()).rootCause()
+              .hasMessageContaining("peerTextCapLength")
+              .hasMessageContaining("peer-text-cap-length must be between 100 and 100000");
+        });
   }
 
   private static void assertFailure(Throwable failure, int status, String message, String body,

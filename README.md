@@ -130,6 +130,7 @@ Each client can override this via a per-client `client-type` property. The three
 | `logging-enabled` | boolean | `true` | Enable Logbook request/response logging for this client |
 | `compression-enabled` | boolean | `true` | Enable HTTP response compression (gzip) |
 | `peer-text-in-message` | string | `whole` | How much of a peer's error text the exception message carries: `whole`, `capped` or `none` — see [How much of the peer's text the message carries](#how-much-of-the-peers-text-the-message-carries-peer-text-in-message) |
+| `peer-text-cap-length` | int | `2000` | Where the exception message cuts a peer's text: a `capped` peer's text and a non-JSON body. Between `100` and `100000`; outside them the application does not start — see [How much of the peer's text the message carries](#how-much-of-the-peers-text-the-message-carries-peer-text-in-message) |
 | `fixed-headers` | map | *(none)* | Headers added to every API request as defaults (a per-request value wins). Never sent on the token call — see [Headers on the token call](#headers-on-the-token-call-bearer-authheaders) |
 | `proxy-config` | object | *(none)* | Forward proxy settings (`proxy-host`, `proxy-port`, `non-proxy-hosts`) |
 | `certificates` | object | *(none)* | mTLS key-store and trust-store |
@@ -1054,22 +1055,27 @@ The error message is intelligently extracted from the response body — the libr
 
 #### How much of the peer's text the message carries (`peer-text-in-message`)
 
-The message is `HTTP <status> <reason>: <text>`. For a JSON error body, `<text>` is the first of the fields `detail`, `error_description`, `message`, `reason`, `error`, `msg` and `description`, followed by ` — ` and the first of `title`, `status` and `code`. A field that is not a string, an object or an array, goes in as its JSON text. Any other body is cut at 2000 characters followed by `...`. The message is the peer's text: an application that logs it, puts it into its own answer or stores it carries whatever the peer sent. Each client chooses how much of it the message carries:
+The message is `HTTP <status> <reason>: <text>`. For a JSON error body, `<text>` is the first of the fields `detail`, `error_description`, `message`, `reason`, `error`, `msg` and `description`, followed by ` — ` and the first of `title`, `status` and `code`. A field that is not a string, an object or an array, goes in as its JSON text. Any other body is cut at `peer-text-cap-length` characters (default 2000) followed by `...`. The message is the peer's text: an application that logs it, puts it into its own answer or stores it carries whatever the peer sent. Each client chooses how much of it the message carries:
 
 ```yaml
 opentmf:
   http-clients:
     my-client:
       peer-text-in-message: capped   # whole (default) | capped | none
+      peer-text-cap-length: 300      # default 2000; between 100 and 100000
 ```
 
 | Value | The message | What a reader of the message loses |
 |---|---|---|
 | `whole` (default) | The fields as above, each whole, whatever its length. This is the message of every earlier release. | Nothing. |
-| `capped` | The same text, cut at 2000 characters followed by `...`. The cut applies to the joined text and to a non-string field's JSON text alike. | The end of a peer's text longer than 2000 characters, the title included when the first field already fills the 2000. |
+| `capped` | The same text, cut at `peer-text-cap-length` characters (default 2000) followed by `...`. The cut applies to the joined text and to a non-string field's JSON text alike. | The end of a peer's text longer than the cap, the title included when the first field already fills the cap. |
 | `none` | `HTTP <status> <reason>` only. | All of the peer's text. |
 
-In every value `getResponseBody()` keeps the whole body, and the status, the headers, `Retry-After` and `OpenTmfClientNotFoundException` for a `404` are unchanged: only `getMessage()` differs. **An application that reads the peer's sentence out of the message must not choose `none`**, for example one that strips the `HTTP <status> <reason>: ` prefix to show or match the peer's own words. Read `getResponseBody()` instead, which holds the peer's answer in every value. Under `capped`, such an application sees the sentence cut when it is longer than 2000 characters.
+In every value `getResponseBody()` keeps the whole body, and the status, the headers, `Retry-After` and `OpenTmfClientNotFoundException` for a `404` are unchanged: only `getMessage()` differs. **An application that reads the peer's sentence out of the message must not choose `none`**, for example one that strips the `HTTP <status> <reason>: ` prefix to show or match the peer's own words. Read `getResponseBody()` instead, which holds the peer's answer in every value. Under `capped`, such an application sees the sentence cut when it is longer than the cap.
+
+`peer-text-cap-length` sets where the message cuts: a `capped` peer's text and, in `whole` and `capped`, a body that is not a JSON error object. It defaults to 2000, the cut of every earlier release, so **nothing changes for a client that does not set it**. It lies between 100 (room for an error's code and its first sentence) and 100000; a value outside them stops the application at start with `peer-text-cap-length must be between 100 and 100000`. A short cap, such as 300, keeps an error's code and first sentence and drops a whole resource a peer echoes back. Under `whole`, a JSON error field stays whole whatever the cap.
+
+Both settings reach every client the library builds. Three public entry points build an error handler without a client's properties and ignore both settings: `new OpenTmfResponseErrorHandler()`, `OpenTmfRestClientStatusHandler.errorHandler()` and `RestClientRegistrar.createRestClient(RestTemplate)`, as does `WebClientConfigUtil.errorWrappingFilter()`. They always give the message of earlier releases: JSON fields whole, any other body cut at 2000. To follow a client's settings from your own code, use the overloads taking its `ClientProperties`: `new OpenTmfResponseErrorHandler(properties)`, `OpenTmfRestClientStatusHandler.errorHandler(properties)`, `RestClientRegistrar.createRestClient(restTemplate, properties)` and `WebClientConfigUtil.errorWrappingFilter(properties)`. They refuse a cap outside the bounds with the same message when they are called.
 
 #### Handling 404 as empty result
 

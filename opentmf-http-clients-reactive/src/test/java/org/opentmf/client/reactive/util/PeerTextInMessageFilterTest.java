@@ -40,7 +40,8 @@ class PeerTextInMessageFilterTest {
         Arguments.of("no-arg", TODAY,
             (Supplier<ExchangeFilterFunction>) WebClientConfigUtil::errorWrappingFilter),
         Arguments.of("null", TODAY,
-            (Supplier<ExchangeFilterFunction>) () -> WebClientConfigUtil.errorWrappingFilter(null)),
+            (Supplier<ExchangeFilterFunction>) () ->
+                WebClientConfigUtil.errorWrappingFilter((PeerTextInMessage) null)),
         Arguments.of("WHOLE", TODAY, (Supplier<ExchangeFilterFunction>) () ->
             WebClientConfigUtil.errorWrappingFilter(PeerTextInMessage.WHOLE)),
         Arguments.of("CAPPED", CAPPED, (Supplier<ExchangeFilterFunction>) () ->

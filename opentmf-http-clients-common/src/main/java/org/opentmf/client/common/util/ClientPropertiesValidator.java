@@ -47,6 +47,7 @@ public class ClientPropertiesValidator {
     List<Finding> findings = new ArrayList<>();
     validateBaseUrl(properties, findings);
     validateConnectionSettings(clientType, properties, findings);
+    validatePeerTextCapLength(properties, findings);
     validateAuth(properties, findings);
     validateCertificates(properties, findings);
     validateProxy(properties, findings);
@@ -106,6 +107,16 @@ public class ClientPropertiesValidator {
     }
     if (!StringUtils.hasText(properties.getSslProtocol())) {
       findings.add(new Finding("ssl-protocol", MUST_NOT_BE_BLANK));
+    }
+  }
+
+  private static void validatePeerTextCapLength(ClientProperties properties,
+      List<Finding> findings) {
+    int capLength = properties.getPeerTextCapLength();
+    if (capLength < ErrorBodyExtractor.MIN_CAP_LENGTH
+        || capLength > ErrorBodyExtractor.MAX_CAP_LENGTH) {
+      findings.add(new Finding("peer-text-cap-length", "must be between "
+          + ErrorBodyExtractor.MIN_CAP_LENGTH + " and " + ErrorBodyExtractor.MAX_CAP_LENGTH));
     }
   }
 
