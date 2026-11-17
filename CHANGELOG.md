@@ -110,10 +110,22 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   length; a field that is an object or an array goes in as its whole JSON text. Only a non-JSON
   body was cut, at 2000 characters. So an application that logs the message, puts it into its
   own answer or stores it carried a peer's text of any length. `capped` cuts the peer's text at
-  2000 characters followed by `...`, the joined fields and a non-string field's JSON text alike.
+  2000 characters (or `peer-text-cap-length`, below) followed by `...`, the joined fields and a non-string field's JSON text alike.
   `none` keeps `HTTP <status> <reason>` only. **Compatibility:** unset, or `whole`, gives the
   message of 2.5.1 byte for byte. The golden over string, object, array, non-JSON, binary and
   empty bodies was taken on the message code as released in 2.5.1, unchanged until this change.
+- **`peer-text-cap-length`: where the exception message cuts a peer's text**, per client,
+  default 2000. It sets the cut of `capped` and the cut of a non-JSON body, which was always 2000.
+  It lies between 100 and 100000; a value outside them stops the application at start with
+  `peer-text-cap-length must be between 100 and 100000`. **Compatibility:** without the setting the
+  message is the message of 2.5.1. New overloads taking a client's `ClientProperties` follow both
+  settings: `OpenTmfResponseErrorHandler(ClientProperties)`,
+  `OpenTmfRestClientStatusHandler.errorHandler(ClientProperties)` and
+  `WebClientConfigUtil.errorWrappingFilter(ClientProperties)`; the library installs them on every
+  client it builds. `ErrorBodyExtractor.extractMessage` gains overloads with the cap length. The
+  entry points without properties (`new OpenTmfResponseErrorHandler()`, `errorHandler()`,
+  `errorWrappingFilter()`, `createRestClient(RestTemplate)`) keep the message of 2.5.1 and ignore
+  both settings.
   It holds on every client type through `RestTemplate`, `RestClient` and `WebClient`. In every
   value `getResponseBody()`, the status, the headers, `Retry-After` and the `404` subtype are
   unchanged. The no-argument `OpenTmfResponseErrorHandler()`,
