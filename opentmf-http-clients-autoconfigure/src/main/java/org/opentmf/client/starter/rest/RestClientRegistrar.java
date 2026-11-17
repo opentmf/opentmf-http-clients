@@ -17,7 +17,6 @@ import org.opentmf.client.bearer.util.TokenCacheUtil;
 import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.model.ClientType;
-import org.opentmf.client.common.model.PeerTextInMessage;
 import org.opentmf.client.common.util.BearerAuthRequirements;
 import org.opentmf.client.common.util.TokenCallProperties;
 import org.opentmf.client.rest.service.api.RestTemplateFactory;
@@ -100,25 +99,29 @@ public class RestClientRegistrar {
 
   /**
    * Builds the {@code RestClient} view of the given {@code RestTemplate}, inheriting its request
-   * factory and interceptors and adding the library's error-wrapping status handler.
+   * factory and interceptors and adding the library's error-wrapping status handler. Its error
+   * messages carry the peer's text whole and cut a non-JSON body at 2000 characters, as in
+   * earlier releases; it ignores every client setting, which
+   * {@link #createRestClient(RestTemplate, ClientProperties)} follows.
    */
   public RestClient createRestClient(RestTemplate restTemplate) {
-    return createRestClient(restTemplate, PeerTextInMessage.WHOLE);
+    return createRestClient(restTemplate, OpenTmfRestClientStatusHandler.errorHandler());
   }
 
   /**
-   * As {@link #createRestClient(RestTemplate)}, its error messages carrying as much of the
-   * peer's text as the client's {@code peer-text-in-message} allows.
+   * As {@link #createRestClient(RestTemplate)}, its error messages following the client's
+   * {@code peer-text-in-message} and {@code peer-text-cap-length}.
+   *
+   * @throws IllegalArgumentException when the cap length is outside its bounds
    */
   public RestClient createRestClient(RestTemplate restTemplate, ClientProperties properties) {
-    return createRestClient(restTemplate, properties.getPeerTextInMessage());
+    return createRestClient(restTemplate, OpenTmfRestClientStatusHandler.errorHandler(properties));
   }
 
   private static RestClient createRestClient(RestTemplate restTemplate,
-      PeerTextInMessage peerText) {
+      RestClient.ResponseSpec.ErrorHandler errorHandler) {
     return RestClient.builder(restTemplate)
-        .defaultStatusHandler(HttpStatusCode::isError,
-            OpenTmfRestClientStatusHandler.errorHandler(peerText))
+        .defaultStatusHandler(HttpStatusCode::isError, errorHandler)
         .build();
   }
 

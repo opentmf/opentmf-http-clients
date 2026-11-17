@@ -52,7 +52,7 @@ public class JdkRestTemplateFactory extends AbstractRestTemplateFactory {
       requestFactory.setReadTimeout(readTimeout(properties));
       var restTemplate = new RestTemplate(requestFactory);
       restTemplate.setErrorHandler(
-          new OpenTmfResponseErrorHandler(properties.getPeerTextInMessage()));
+          new OpenTmfResponseErrorHandler(properties));
       applyObservationRegistry(restTemplate);
       addContributedInterceptors(restTemplate);
       addResilienceInterceptor(restTemplate, clientId, properties);

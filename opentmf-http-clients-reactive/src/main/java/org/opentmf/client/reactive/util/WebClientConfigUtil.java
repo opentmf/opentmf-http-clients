@@ -130,7 +130,7 @@ public final class WebClientConfigUtil {
           }
         })
         .clientConnector(new ReactorClientHttpConnector(httpClient))
-        .filter(errorWrappingFilter(clientProperties.getPeerTextInMessage()))
+        .filter(errorWrappingFilter(clientProperties))
         .exchangeStrategies(buildExchangeStrategies());
     if (clientProperties.getExchangeTimeout() != null) {
       // innermost: the bound starts at the send and covers the body as every filter reads it
@@ -146,7 +146,9 @@ public final class WebClientConfigUtil {
   /**
    * An {@link ExchangeFilterFunction} that converts HTTP error responses into
    * {@link OpenTmfClientResponseException} (or {@link OpenTmfClientNotFoundException} for 404).
-   * Applied automatically on all library-created {@code WebClient} instances.
+   * Its messages carry the peer's text whole and cut a non-JSON body at
+   * {@link ErrorBodyExtractor#MAX_BODY_LENGTH}, as in earlier releases; it ignores every client
+   * setting, which {@link #errorWrappingFilter(ClientProperties)} follows.
    */
   public static ExchangeFilterFunction errorWrappingFilter() {
     return errorWrappingFilter(PeerTextInMessage.WHOLE);
@@ -154,12 +156,29 @@ public final class WebClientConfigUtil {
 
   /**
    * As {@link #errorWrappingFilter()}, its messages carrying as much of the peer's text as
-   * {@code peerText} allows.
+   * {@code peerText} allows, cut at {@link ErrorBodyExtractor#MAX_BODY_LENGTH} where they cut.
    *
    * @param peerText the client's {@code peer-text-in-message}; {@code null} means
    *     {@link PeerTextInMessage#WHOLE}
    */
   public static ExchangeFilterFunction errorWrappingFilter(@Nullable PeerTextInMessage peerText) {
+    return errorWrappingFilter(peerText, ErrorBodyExtractor.MAX_BODY_LENGTH);
+  }
+
+  /**
+   * As {@link #errorWrappingFilter()}, following the client's {@code peer-text-in-message} and
+   * {@code peer-text-cap-length}; applied automatically on all library-created {@code WebClient}
+   * instances.
+   *
+   * @throws IllegalArgumentException when the cap length is outside its bounds
+   */
+  public static ExchangeFilterFunction errorWrappingFilter(ClientProperties clientProperties) {
+    return errorWrappingFilter(clientProperties.getPeerTextInMessage(),
+        ErrorBodyExtractor.requireCapLength(clientProperties.getPeerTextCapLength()));
+  }
+
+  private static ExchangeFilterFunction errorWrappingFilter(
+      @Nullable PeerTextInMessage peerText, int capLength) {
     return ExchangeFilterFunction.ofResponseProcessor(response -> {
       if (!response.statusCode().isError()) {
         return Mono.just(response);
@@ -173,7 +192,7 @@ public final class WebClientConfigUtil {
             String rawBody = ErrorBodyExtractor.decodeAsText(body,
                 ErrorBodyExtractor.charsetOf(contentType));
             String message = ErrorBodyExtractor.extractMessage(status, body, contentType,
-                peerText);
+                peerText, capLength);
             OpenTmfClientResponseException ex = status.isSameCodeAs(HttpStatus.NOT_FOUND)
                 ? new OpenTmfClientNotFoundException(status, message, rawBody)
                 : new OpenTmfClientResponseException(status, message, rawBody);

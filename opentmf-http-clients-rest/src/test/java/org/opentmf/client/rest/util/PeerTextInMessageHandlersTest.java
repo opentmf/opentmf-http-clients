@@ -51,7 +51,8 @@ class PeerTextInMessageHandlersTest {
         Arguments.of("RestTemplate no-arg", TODAY, (Handler) response ->
             new OpenTmfResponseErrorHandler().handleError(uri, HttpMethod.GET, response)),
         Arguments.of("RestTemplate null", TODAY, (Handler) response ->
-            new OpenTmfResponseErrorHandler(null).handleError(uri, HttpMethod.GET, response)),
+            new OpenTmfResponseErrorHandler((PeerTextInMessage) null)
+                .handleError(uri, HttpMethod.GET, response)),
         Arguments.of("RestTemplate WHOLE", TODAY, (Handler) response ->
             new OpenTmfResponseErrorHandler(PeerTextInMessage.WHOLE)
                 .handleError(uri, HttpMethod.GET, response)),
@@ -64,7 +65,8 @@ class PeerTextInMessageHandlersTest {
         Arguments.of("RestClient no-arg", TODAY, (Handler) response ->
             OpenTmfRestClientStatusHandler.errorHandler().handle(request, response)),
         Arguments.of("RestClient null", TODAY, (Handler) response ->
-            OpenTmfRestClientStatusHandler.errorHandler(null).handle(request, response)),
+            OpenTmfRestClientStatusHandler.errorHandler((PeerTextInMessage) null)
+                .handle(request, response)),
         Arguments.of("RestClient WHOLE", TODAY, (Handler) response ->
             OpenTmfRestClientStatusHandler.errorHandler(PeerTextInMessage.WHOLE)
                 .handle(request, response)),
