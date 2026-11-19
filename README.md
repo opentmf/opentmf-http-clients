@@ -1388,16 +1388,13 @@ Work goes to `develop` through a pull request.
 
 - **Build locally with JDK 17 and Maven 3.9.x**; the build refuses other versions. `mvn clean
   verify` builds every module and runs the unit and integration tests and the per-module coverage
-  checks. No Docker is needed. CI builds with the repository's Maven wrapper, `./mvnw` (Maven
-  3.9.16, downloaded once and checked against its sha256); any local Maven 3.9.x works as well.
-- **CI:** GitHub Actions runs `./mvnw clean verify` on every pull request and every push to
-  `develop` (`.github/workflows/maven-build.yml`), on GitHub-hosted runners, with no secrets and
-  nothing published.
-- **A pull request merges only when both are green:**
-  - its CI run;
-  - the maintainers' local gate, which adds the Sonar analysis (no new issues, coverage of new
-    code) and, for a change of behaviour, a compatibility report measured against the released
-    version (see `docs/`).
+  checks. No Docker is needed. The repository's Maven wrapper, `./mvnw`, runs Maven 3.9.16
+  (downloaded once and checked against its sha256); any local Maven 3.9.x works as well.
+- **No CI:** nothing is built on GitHub, neither for a push nor for a pull request.
+- **The proof of a change is the maintainers' local gate**, `./mvnw -Psonar clean verify`: every
+  module's tests and coverage checks green, and the local SonarQube at zero new issues. For a
+  change of behaviour it also includes a compatibility report measured against the released
+  version (see `docs/`). A pull request merges on that gate.
 
 ## License
 
