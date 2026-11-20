@@ -104,6 +104,11 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   do not retry together. The number of retries and the `Retry-After` handling are unchanged.
 
 ### Added
+- **New meter series on a service whose `MeterRegistry` comes from Boot's metrics
+  auto-configuration:** `opentmf.client.token.fetch`, `opentmf.client.pool.leased|available|
+  pending|max` and the `resilience4j.circuitbreaker.*`/`resilience4j.bulkhead.*` meters of the
+  clients now appear on its scrape, where they did not before (see "The library's meters were
+  never registered" under Fixed). A dashboard or an alert on these names may start to see data.
 - **`peer-text-in-message`: how much of a peer's error text the exception message carries**, per
   client: `whole` (the default), `capped` or `none`. The message of an
   `OpenTmfClientResponseException` takes the error field of a JSON body whole, whatever its
@@ -195,6 +200,17 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   token request runs on, for code that wires the token clients by hand.
 
 ### Fixed
+- **The library's meters were never registered in an application whose `MeterRegistry` comes
+  from Boot's metrics auto-configuration** (actuator or `spring-boot-micrometer-metrics`; every
+  service that does not declare its own registry). The starter's auto-configuration was not
+  ordered after Boot's, so its "a `MeterRegistry` bean exists" conditions were evaluated before
+  the registry was defined. The token counter, the Apache pool gauges and the resilience4j binder
+  were then left out without a word. Seen on two stages' live series, one under a load test:
+  none of the five meters on any service. The tests had handed the registry in as the
+  application's own bean, which is seen before every auto-configuration, and so did not show it.
+  The auto-configuration now runs after `MetricsAutoConfiguration` and
+  `CompositeMeterRegistryAutoConfiguration`. An application that declares its own
+  `MeterRegistry` bean sees no change.
 - **A response body cut short no longer reaches the caller as an empty success when Logbook logs
   the call.** Logbook's REST interceptor reads the whole body inside the exchange to log it and
   drops a failure of that read with a WARN ("Unable to log response"). On `apache`, with the

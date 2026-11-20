@@ -417,6 +417,10 @@ Independent of the per-client beans, the starter registers these singletons:
 | `opentmfApachePoolMeters` | `ApachePoolMeters` | Apache HttpClient 5 + Micrometer + a `MeterRegistry` bean |
 | `opentmfTokenFetchMeters` | `TokenFetchMeters` | Micrometer + a `MeterRegistry` bean — see [Token fetch](#token-fetch-transport-retry-typed-failure-metrics) |
 
+"A `MeterRegistry` bean" includes the one Boot's metrics auto-configuration makes (actuator or
+`spring-boot-micrometer-metrics`): the starter's auto-configuration runs after it. Before 2.5.2
+it did not, and only a registry the application declared itself was seen.
+
 You normally only autowire `HttpClientRegistry` (for dynamic clients); the others work behind the scenes — `ResilienceRegistries` is useful in tests or when you need direct access to a client's `CircuitBreaker`/`Bulkhead` instances.
 
 ### Autowiring beans
