@@ -97,6 +97,13 @@
       <optional>true</optional>
     </dependency>
 
+    <!-- Boot's metrics auto-configuration: a started application's MeterRegistry, for the ITs -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-micrometer-metrics</artifactId>
+      <scope>test</scope>
+    </dependency>
+
     <!-- REST HTTP client implementations: optional -->
     <dependency>
       <groupId>org.apache.httpcomponents.client5</groupId>

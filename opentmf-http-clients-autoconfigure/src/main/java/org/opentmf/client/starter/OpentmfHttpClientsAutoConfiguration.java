@@ -12,7 +12,16 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 
-@AutoConfiguration
+/**
+ * The library's auto-configuration. It runs after Boot's metrics auto-configuration, so that the
+ * application's {@code MeterRegistry} exists when the meters' conditions are evaluated: the token
+ * counter, the Apache pool gauges and the resilience4j binder are registered only when it does.
+ * Named by class name, so the module stays optional.
+ */
+@AutoConfiguration(afterName = {
+    "org.springframework.boot.micrometer.metrics.autoconfigure.MetricsAutoConfiguration",
+    "org.springframework.boot.micrometer.metrics.autoconfigure"
+        + ".CompositeMeterRegistryAutoConfiguration"})
 @EnableConfigurationProperties(OpentmfHttpClientsConfig.class)
 @Import({
     StringToClientTypeConverter.class,
