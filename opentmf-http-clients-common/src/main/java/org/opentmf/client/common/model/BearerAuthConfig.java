@@ -138,12 +138,25 @@ public class BearerAuthConfig {
    * retries) is remembered. Until then every token request for the same token URL, scope and
    * username fails at once with that failure, without a call, so callers do not repeat the
    * retrieval against a failing identity provider. A {@code Retry-After} from the token endpoint
-   * lengthens it, up to the client's {@code max-retry-after}. A refused credential (any other
-   * 4xx) and an unusable answer are never remembered. The cost: once the identity provider is
+   * lengthens it, up to the client's {@code max-retry-after}. A refused credential is remembered
+   * only by {@code refusal-memory}; an unusable answer is never remembered. The cost: once the identity provider is
    * back, the next token can be retrieved up to this long late. Unset by default: a failure is
    * not remembered, and the next caller retrieves again.
    */
   private @Nullable Duration failureMemory;
+
+  /**
+   * Opt-in memory of a refused credential: how long a token retrieval that the token endpoint
+   * refused (a 4xx other than 408 and 429, e.g. a wrong client secret answered 401
+   * {@code invalid_client}) is remembered. Until then every token request for the same token
+   * URL, scope and username fails at once with that refusal, without a call, so callers do not
+   * send a refused credential again and again. A {@code Retry-After} does not lengthen it. The
+   * cost: once the credential is fixed, the next token can be retrieved up to this long late, so
+   * keep it short (seconds). Another token URL, scope or username is never refused by it.
+   * Independent of {@code failure-memory}. Unset by default: a refusal is not remembered, and
+   * the next caller retrieves again.
+   */
+  private @Nullable Duration refusalMemory;
 
   /**
    * Whether the request log (Logbook, with the client's {@code logging-enabled}) shows the token

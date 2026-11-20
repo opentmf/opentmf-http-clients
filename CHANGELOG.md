@@ -140,8 +140,18 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   token call's own retries) is remembered for that long: until then every token request for the
   same key fails at once with that failure (its own copy), without a call. A `Retry-After` from
   the token endpoint lengthens it, up to the client's `max-retry-after`. A refused credential
-  (any other 4xx) and an unusable answer are never remembered; `clearCache()` forgets. The cost:
-  once the identity provider is back, the next token can come up to that long late.
+  (any other 4xx) is remembered only by `bearer-auth.refusal-memory`, and an unusable answer is
+  never remembered; `clearCache()` forgets. The cost: once the identity provider is back, the
+  next token can come up to that long late.
+- **`bearer-auth.refusal-memory`: an opt-in memory of a refused credential**, unset by default
+  (and then nothing is remembered, as before). When set, a retrieval that the token endpoint
+  refused (a 4xx other than `408` and `429`, e.g. a wrong client secret answered `401`) is
+  remembered for exactly that long; a `Retry-After` does not lengthen it. Until then every token
+  request for the same key (token URL, scope and username) fails at once with that refusal (its
+  own copy), without a call; other keys and other clients still call. Independent of
+  `failure-memory`. `clearCache()` forgets it. The cost: once the credential is fixed, the next
+  token can come up to that long late. `TokenMints` has a constructor that takes it; the
+  existing ones remember no refusal.
 - `TokenMints` (`opentmf-http-clients-bearer-provider`): the one mint per key and the failure
   memory of a token service; and the constructors
   `SyncBearerTokenServiceImpl(config, cache, client, maxRetryAfter)` and

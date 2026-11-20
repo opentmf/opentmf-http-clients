@@ -40,17 +40,20 @@ class TokenMintsTest {
   private static final URI TOKEN_URL = URI.create("http://idp/token");
   private static final Duration MEMORY = Duration.ofSeconds(10);
   private static final Duration MAX_RETRY_AFTER = Duration.ofSeconds(30);
+  private static final Duration REFUSAL = Duration.ofSeconds(10);
 
   private final AtomicLong now = new AtomicLong(1_000);
   private Cache<String, TokenEntry> cache;
   private TokenMints mints;
   private TokenMints remembering;
+  private TokenMints refusing;
 
   @BeforeEach
   void setUp() {
     cache = Caffeine.newBuilder().build();
     mints = new TokenMints(cache, null, MAX_RETRY_AFTER, now::get);
     remembering = new TokenMints(cache, MEMORY, MAX_RETRY_AFTER, now::get);
+    refusing = new TokenMints(cache, null, REFUSAL, MAX_RETRY_AFTER, now::get);
   }
 
   // ---- one mint per key, sync
@@ -362,6 +365,133 @@ class TokenMintsTest {
     assertThat(TokenMints.isRetryable(new IllegalStateException("x"))).isFalse();
     assertThat(TokenMints.isRetryable(new BearerTokenResponseException(TOKEN_URL, HttpStatus.OK,
         "access_token", Reason.EMPTY_BODY))).isFalse();
+  }
+
+  // ---- the refusal memory
+
+  @ParameterizedTest(name = "{0}")
+  @CsvSource({"400", "401", "403", "404", "409"})
+  void refusal_isRemembered_untilItsMemoryPasses(int status) {
+    var failure = status(status, null);
+    assertThatThrownBy(() -> refusing.get(KEY, () -> {
+      throw failure;
+    })).isSameAs(failure);
+
+    now.addAndGet(REFUSAL.toNanos() - 1);
+    assertThatThrownBy(() -> refusing.get(KEY, () -> {
+      throw new AssertionError("no mint");
+    })).isInstanceOf(BearerTokenException.class)
+        .isNotSameAs(failure)
+        .hasMessage(failure.getMessage());
+
+    now.addAndGet(1);
+    assertThat(refusing.get(KEY, () -> entry("t1"))).isEqualTo(entry("t1"));
+  }
+
+  @Test
+  void refusal_async_aRememberedRefusal_failsWithoutAMint() {
+    var minting = new CompletableFuture<TokenEntry>();
+    var first = refusing.getAsync(KEY, () -> minting);
+    minting.completeExceptionally(status(401, null));
+    assertThat(failureOf(first)).isInstanceOf(BearerTokenException.class);
+
+    var second = refusing.getAsync(KEY, () -> {
+      throw new AssertionError("no mint");
+    });
+
+    assertThat(failureOf(second)).isInstanceOf(BearerTokenException.class);
+  }
+
+  @Test
+  void refusal_aRetryAfterDoesNotLengthenIt() {
+    assertThatThrownBy(() -> refusing.get(KEY, () -> {
+      throw status(401, Duration.ofSeconds(25));
+    })).isInstanceOf(BearerTokenException.class);
+
+    now.addAndGet(REFUSAL.toNanos());
+
+    assertThat(refusing.get(KEY, () -> entry("t1"))).isEqualTo(entry("t1"));
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @CsvSource({"408", "429", "500", "503"})
+  void refusal_aRetryableStatus_isNotARefusal(int status) {
+    assertThatThrownBy(() -> refusing.get(KEY, () -> {
+      throw status(status, null);
+    })).isInstanceOf(BearerTokenException.class);
+
+    assertThat(refusing.get(KEY, () -> entry("t1"))).isEqualTo(entry("t1"));
+  }
+
+  @Test
+  void refusal_aTransportFailureOrAnUnusableAnswer_isNotARefusal() {
+    assertThatThrownBy(() -> refusing.get(KEY, () -> {
+      throw transport();
+    })).isInstanceOf(BearerTokenTransportException.class);
+    assertThatThrownBy(() -> refusing.get(KEY, () -> {
+      throw new BearerTokenResponseException(TOKEN_URL, HttpStatus.OK, "access_token",
+          Reason.EMPTY_BODY);
+    })).isInstanceOf(BearerTokenResponseException.class);
+
+    assertThat(refusing.get(KEY, () -> entry("t1"))).isEqualTo(entry("t1"));
+  }
+
+  @Test
+  void refusal_ofKeyA_isNeverServedToKeyB() {
+    assertThatThrownBy(() -> refusing.get("A", () -> {
+      throw status(401, null);
+    })).isInstanceOf(BearerTokenException.class);
+
+    assertThat(refusing.get("B", () -> entry("tB"))).isEqualTo(entry("tB"));
+    assertThatThrownBy(() -> refusing.get("A", () -> {
+      throw new AssertionError("no mint");
+    })).isInstanceOf(BearerTokenException.class);
+  }
+
+  @Test
+  void refusal_andFailure_eachKeepTheirOwnMemory() {
+    var both = new TokenMints(cache, MEMORY, Duration.ofSeconds(2), MAX_RETRY_AFTER, now::get);
+    assertThatThrownBy(() -> both.get("refused", () -> {
+      throw status(401, null);
+    })).isInstanceOf(BearerTokenException.class);
+    assertThatThrownBy(() -> both.get("down", () -> {
+      throw status(503, null);
+    })).isInstanceOf(BearerTokenException.class);
+
+    now.addAndGet(Duration.ofSeconds(2).toNanos());
+
+    assertThat(both.get("refused", () -> entry("t1"))).isEqualTo(entry("t1"));
+    assertThatThrownBy(() -> both.get("down", () -> {
+      throw new AssertionError("no mint");
+    })).isInstanceOf(BearerTokenException.class);
+  }
+
+  @Test
+  void refusal_unset_onlyTheFailureMemory_remembersNoRefusal() {
+    var failureOnly = new TokenMints(cache, MEMORY, null, MAX_RETRY_AFTER, now::get);
+    assertThatThrownBy(() -> failureOnly.get(KEY, () -> {
+      throw status(401, null);
+    })).isInstanceOf(BearerTokenException.class);
+
+    assertThat(failureOnly.get(KEY, () -> entry("t1"))).isEqualTo(entry("t1"));
+  }
+
+  @Test
+  void refusal_forget_dropsTheRememberedRefusals() {
+    assertThatThrownBy(() -> refusing.get(KEY, () -> {
+      throw status(401, null);
+    })).isInstanceOf(BearerTokenException.class);
+
+    refusing.forget();
+
+    assertThat(refusing.get(KEY, () -> entry("t1"))).isEqualTo(entry("t1"));
+  }
+
+  @ParameterizedTest(name = "{0} -> {1}")
+  @CsvSource({"400, true", "401, true", "403, true", "404, true", "409, true", "408, false",
+      "429, false", "500, false", "503, false"})
+  void isRefusal_byStatus(int status, boolean refusal) {
+    assertThat(TokenMints.isRefusal(status(status, null))).isEqualTo(refusal);
   }
 
   // ---- a copy per caller

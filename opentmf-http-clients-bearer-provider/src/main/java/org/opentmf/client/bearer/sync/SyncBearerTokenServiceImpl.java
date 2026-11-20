@@ -8,6 +8,7 @@ import static org.opentmf.client.common.util.TokenUtil.TOKEN_TYPE_BEARER;
 import static org.opentmf.client.common.util.TokenUtil.cacheKey;
 
 import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Ticker;
 import java.time.Duration;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
@@ -21,7 +22,8 @@ import tools.jackson.databind.node.ObjectNode;
  * Bearer tokens for a sync client, cached per token URL, scope and username. Callers of one key
  * that find no cached token while its mint is in flight wait for that mint and share its
  * outcome; with {@code bearer-auth.failure-memory} set, a retryable failure is remembered for a
- * while (see {@link TokenMints}).
+ * while, and with {@code bearer-auth.refusal-memory} set, a refused credential (see
+ * {@link TokenMints}).
  */
 @Slf4j
 public class SyncBearerTokenServiceImpl implements SyncBearerTokenService {
@@ -49,7 +51,8 @@ public class SyncBearerTokenServiceImpl implements SyncBearerTokenService {
     this.config = config;
     this.tokenCache = tokenCache;
     this.syncTokenClient = syncTokenClient;
-    this.mints = new TokenMints(tokenCache, config.getFailureMemory(), maxRetryAfter);
+    this.mints = new TokenMints(tokenCache, config.getFailureMemory(),
+        config.getRefusalMemory(), maxRetryAfter, Ticker.systemTicker());
   }
 
   @Override

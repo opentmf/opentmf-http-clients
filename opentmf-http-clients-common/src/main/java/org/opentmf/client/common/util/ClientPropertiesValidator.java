@@ -163,6 +163,9 @@ public class ClientPropertiesValidator {
     if (bearer.getFailureMemory() != null) {
       requirePositive(bearer.getFailureMemory(), "bearer-auth.failure-memory", findings);
     }
+    if (bearer.getRefusalMemory() != null) {
+      requirePositive(bearer.getRefusalMemory(), "bearer-auth.refusal-memory", findings);
+    }
   }
 
   private static void validateCertificates(ClientProperties properties, List<Finding> findings) {
