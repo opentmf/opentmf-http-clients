@@ -281,13 +281,15 @@ public final class TokenMints {
     if (!(failure instanceof RuntimeException runtime)) {
       return;
     }
+    var failureFor = failureMemory;
+    var refusalFor = refusalMemory;
     Duration memory;
     String setting;
-    if (failureMemory != null && isRetryable(runtime)) {
-      memory = memoryFor(failureMemory, runtime);
+    if (failureFor != null && isRetryable(runtime)) {
+      memory = memoryFor(failureFor, runtime);
       setting = FAILURE_MEMORY;
-    } else if (refusalMemory != null && isRefusal(runtime)) {
-      memory = refusalMemory;
+    } else if (refusalFor != null && isRefusal(runtime)) {
+      memory = refusalFor;
       setting = REFUSAL_MEMORY;
     } else {
       return;
