@@ -19,8 +19,8 @@ import org.opentmf.client.common.model.ClientProperties;
 import org.springframework.http.HttpStatus;
 
 /**
- * The mints of one token service: at most one mint per token key at a time, and an opt-in short
- * memory of a mint that failed retryably.
+ * The mints of one token service: at most one mint per token key at a time, an opt-in short
+ * memory of a mint that failed retryably, and an opt-in short memory of a refused credential.
  *
  * <p><b>One mint per key.</b> A caller that finds no cached token while a mint of its key is in
  * flight does not mint again: it waits for that mint and shares its outcome, the token or the
@@ -34,8 +34,15 @@ import org.springframework.http.HttpStatus;
  * failed retryably (a 5xx, 408 or 429 from the token endpoint, or a transport failure) is
  * remembered for that long, or for the endpoint's {@code Retry-After} when it asks for longer, up
  * to {@code max-retry-after}: until then every caller of the key fails at once with that failure,
- * without a call. A refused credential (any other 4xx) and an unusable answer are never
- * remembered. {@link #forget()} drops every remembered failure.</p>
+ * without a call.</p>
+ *
+ * <p><b>The refusal memory</b> ({@code bearer-auth.refusal-memory}, off when unset). A mint that
+ * the token endpoint refused (a 4xx other than 408 and 429: a wrong client secret, an unknown
+ * client, a grant it does not allow) is remembered for that long, never longer: a
+ * {@code Retry-After} does not lengthen it, so once the credential is fixed the next token comes
+ * at most that late. Until then every caller of the key fails at once with the refusal, without a
+ * call. An unusable answer is never remembered. Each memory is of one key: a key's failure is
+ * never served to another key. {@link #forget()} drops every remembered failure and refusal.</p>
  *
  * <p>Every caller but the one that ran the mint gets its own copy of a token failure, of the same
  * type and with the same message, status, headers and cause, so no exception instance is shared
@@ -47,8 +54,12 @@ public final class TokenMints {
   /** The default {@code max-retry-after} of a client. */
   public static final Duration DEFAULT_MAX_RETRY_AFTER = new ClientProperties().getMaxRetryAfter();
 
+  private static final String FAILURE_MEMORY = "bearer-auth.failure-memory";
+  private static final String REFUSAL_MEMORY = "bearer-auth.refusal-memory";
+
   private final Cache<String, TokenEntry> cache;
   private final @Nullable Duration failureMemory;
+  private final @Nullable Duration refusalMemory;
   private final Duration maxRetryAfter;
   private final Ticker ticker;
   private final Map<String, CompletableFuture<TokenEntry>> inFlight = new ConcurrentHashMap<>();
@@ -68,8 +79,22 @@ public final class TokenMints {
   /** As above, with the clock of the failure memory. */
   public TokenMints(Cache<String, TokenEntry> cache, @Nullable Duration failureMemory,
       Duration maxRetryAfter, Ticker ticker) {
+    this(cache, failureMemory, null, maxRetryAfter, ticker);
+  }
+
+  /**
+   * @param cache         the service's token cache: a mint's token is put there before the
+   *                      callers waiting for it are released
+   * @param failureMemory how long a retryable failure is remembered, or {@code null} for never
+   * @param refusalMemory how long a refused credential is remembered, or {@code null} for never
+   * @param maxRetryAfter the longest {@code Retry-After} that lengthens the failure memory
+   * @param ticker        the clock of both memories
+   */
+  public TokenMints(Cache<String, TokenEntry> cache, @Nullable Duration failureMemory,
+      @Nullable Duration refusalMemory, Duration maxRetryAfter, Ticker ticker) {
     this.cache = cache;
     this.failureMemory = failureMemory;
+    this.refusalMemory = refusalMemory;
     this.maxRetryAfter = maxRetryAfter;
     this.ticker = ticker;
   }
@@ -247,21 +272,29 @@ public final class TokenMints {
       failures.remove(key, remembered);
       return null;
     }
-    log.debug("Failing a bearer token request at once: the last mint failed less than"
-        + " bearer-auth.failure-memory ago ({})", remembered.failure().getMessage());
+    log.debug("Failing a bearer token request at once: the last mint failed less than {} ago"
+        + " ({})", remembered.setting(), remembered.failure().getMessage());
     return asRuntime(forCaller(remembered.failure()));
   }
 
   private void remember(String key, Throwable failure) {
-    var configured = failureMemory;
-    if (configured == null || !(failure instanceof RuntimeException runtime)
-        || !isRetryable(runtime)) {
+    if (!(failure instanceof RuntimeException runtime)) {
       return;
     }
-    var memory = memoryFor(configured, runtime);
-    failures.put(key, new Remembered(runtime, ticker.read() + memory.toNanos()));
+    Duration memory;
+    String setting;
+    if (failureMemory != null && isRetryable(runtime)) {
+      memory = memoryFor(failureMemory, runtime);
+      setting = FAILURE_MEMORY;
+    } else if (refusalMemory != null && isRefusal(runtime)) {
+      memory = refusalMemory;
+      setting = REFUSAL_MEMORY;
+    } else {
+      return;
+    }
+    failures.put(key, new Remembered(runtime, ticker.read() + memory.toNanos(), setting));
     log.warn("Bearer token mint failed ({}); every token request of this key fails at once for"
-        + " {} ms (bearer-auth.failure-memory)", runtime.getMessage(), memory.toMillis());
+        + " {} ms ({})", runtime.getMessage(), memory.toMillis(), setting);
   }
 
   /**
@@ -275,6 +308,17 @@ public final class TokenMints {
     }
     var asked = retryAfter.compareTo(maxRetryAfter) > 0 ? maxRetryAfter : retryAfter;
     return asked.compareTo(configured) > 0 ? asked : configured;
+  }
+
+  /** A 4xx from the token endpoint other than 408 and 429: the endpoint refused the credential. */
+  static boolean isRefusal(Throwable failure) {
+    if (failure instanceof BearerTokenException e) {
+      var status = e.getStatusCode();
+      return status.is4xxClientError()
+          && status.value() != HttpStatus.REQUEST_TIMEOUT.value()
+          && status.value() != HttpStatus.TOO_MANY_REQUESTS.value();
+    }
+    return false;
   }
 
   /** A transport failure, or a 5xx, 408 or 429 from the token endpoint. */
@@ -312,6 +356,6 @@ public final class TokenMints {
     return failure;
   }
 
-  private record Remembered(RuntimeException failure, long untilNanos) {
+  private record Remembered(RuntimeException failure, long untilNanos, String setting) {
   }
 }

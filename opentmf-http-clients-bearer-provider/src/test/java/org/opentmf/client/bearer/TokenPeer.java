@@ -43,6 +43,7 @@ public final class TokenPeer implements AutoCloseable {
   private volatile Answer answer = Answer.TOKEN;
   private volatile long holdMillis;
   private volatile Long retryAfterSeconds;
+  private volatile String refusedPath;
 
   private TokenPeer(ServerSocket server) {
     this.server = server;
@@ -77,6 +78,15 @@ public final class TokenPeer implements AutoCloseable {
     return this;
   }
 
+  /**
+   * Refuses ({@link Answer#REFUSED}) every following call whose path ends with {@code path}, and
+   * answers the others as set; {@code null} answers every call as set.
+   */
+  public TokenPeer refusePath(String path) {
+    this.refusedPath = path;
+    return this;
+  }
+
   /** The token calls received so far. */
   public int calls() {
     return calls.get();
@@ -91,6 +101,7 @@ public final class TokenPeer implements AutoCloseable {
     calls.set(0);
     arrivals.clear();
     retryAfterSeconds = null;
+    refusedPath = null;
   }
 
   @Override
@@ -113,16 +124,21 @@ public final class TokenPeer implements AutoCloseable {
   }
 
   private void serve(Socket socket) {
+    String head;
     try {
       var in = socket.getInputStream();
-      in.readNBytes(readHead(in));
+      head = readHead(in);
+      in.readNBytes(contentLength(head));
     } catch (IOException gone) {
       close(socket);
       return;
     }
     arrivals.add(System.nanoTime());
     calls.incrementAndGet();
-    var how = answer;
+    var refused = refusedPath;
+    var requestLine = head.split(" ", 3);
+    var path = requestLine.length > 1 ? requestLine[1] : "";
+    var how = refused != null && path.endsWith(refused) ? Answer.REFUSED : answer;
     var retryAfter = retryAfterSeconds;
     answers.schedule(() -> write(socket, how, retryAfter), holdMillis, TimeUnit.MILLISECONDS);
   }
@@ -164,8 +180,8 @@ public final class TokenPeer implements AutoCloseable {
     }
   }
 
-  /** Reads the request head and returns its {@code Content-Length}. */
-  private static int readHead(InputStream in) throws IOException {
+  /** Reads the request head. */
+  private static String readHead(InputStream in) throws IOException {
     var head = new StringBuilder();
     int b;
     while ((b = in.read()) != -1) {
@@ -174,7 +190,12 @@ public final class TokenPeer implements AutoCloseable {
         break;
       }
     }
-    for (var line : head.toString().split("\r\n")) {
+    return head.toString();
+  }
+
+  /** The {@code Content-Length} of a request head. */
+  private static int contentLength(String head) {
+    for (var line : head.split("\r\n")) {
       if (line.toLowerCase(Locale.ROOT).startsWith("content-length:")) {
         return Integer.parseInt(line.substring("content-length:".length()).trim());
       }

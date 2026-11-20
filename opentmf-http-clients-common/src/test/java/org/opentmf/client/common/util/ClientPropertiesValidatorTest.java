@@ -169,6 +169,23 @@ class ClientPropertiesValidatorTest {
   }
 
   @Test
+  void bearerAuth_refusalMemory_unsetIsSound_nonPositiveIsFlagged() {
+    var properties = apacheDefaults();
+    var bearer = new BearerAuthConfig();
+    properties.setBearerAuth(bearer);
+    assertThat(fields(ClientPropertiesValidator.validate(ClientType.APACHE, properties)))
+        .doesNotContain("bearer-auth.refusal-memory");
+
+    bearer.setRefusalMemory(Duration.ofSeconds(10));
+    assertThat(fields(ClientPropertiesValidator.validate(ClientType.APACHE, properties)))
+        .doesNotContain("bearer-auth.refusal-memory");
+
+    bearer.setRefusalMemory(Duration.ofSeconds(-1));
+    assertThat(fields(ClientPropertiesValidator.validate(ClientType.APACHE, properties)))
+        .contains("bearer-auth.refusal-memory");
+  }
+
+  @Test
   void bearerAuth_mock_skipsEndpointChecks() {
     var properties = apacheDefaults();
     var bearer = new BearerAuthConfig();
