@@ -257,6 +257,7 @@ opentmf:
         log-response-body: false        # true: Logbook shows the token answer; debugging only
         # failure-memory: 10s           # opt-in, unset by default: see "Concurrent callers and
                                         # a failing identity provider"
+        # refusal-memory: 10s           # opt-in, unset by default: see the same section
         form-data:
           username: user
           password: pass
@@ -907,8 +908,8 @@ fails at once with that failure (its own copy), without a call. Retryable means:
 - a transport failure (`BearerTokenTransportException`).
 
 A `Retry-After` from the token endpoint lengthens the memory, up to the client's
-`max-retry-after`. A refused credential (`400`, `401`, `403`, any other 4xx) and an unusable answer
-are never remembered: they are the identity provider's verdict, not an outage. The library logs one
+`max-retry-after`. A refused credential (`400`, `401`, `403`, any other 4xx) is not remembered by
+`failure-memory` (that is `refusal-memory` below), and an unusable answer is never remembered. The library logs one
 `WARN` when it remembers a failure, and a `DEBUG` line for each request it fails from the memory.
 A failure served from the memory is no mint: the token counter does not count it. `clearCache()`
 forgets every remembered failure. The cost is that, once the identity provider is back, the next
@@ -922,6 +923,30 @@ opentmf:
         token-url: https://idp.example.invalid/token
         # ...
         failure-memory: 10s           # an outage costs one retrieval per 10 s per key, not one per caller
+```
+
+**`bearer-auth.refusal-memory`: remembering a refused credential (opt-in).** Unset by default, and
+then nothing is remembered. A wrong client secret is answered `401` on every call, and a token
+call that was refused is not retried, so without this setting every caller sends the refused
+credential again (measured: a wrong secret and 1,000 waiting outbox rows made 845 refused token
+calls in five minutes). When set, a retrieval that the token endpoint **refused** (any 4xx except
+`408` and `429`) is remembered for exactly that long; a `Retry-After` does not lengthen it. Until
+then every token request for the same key (token URL, scope and username) fails at once with that
+refusal (its own copy of the `BearerTokenException`), without a call. Another key of the same
+client, and every other client, still calls. It is independent of `failure-memory`; either, both
+or neither may be set. The logs and the token counter are as for `failure-memory`, and
+`clearCache()` forgets it, as does `HttpClientRegistry.replace`, which builds a new token service.
+The cost: once the secret is fixed, the next token can come up to `refusal-memory` late, so keep it
+short:
+
+```yaml
+opentmf:
+  http-clients:
+    orders:
+      bearer-auth:
+        token-url: https://idp.example.invalid/token
+        # ...
+        refusal-memory: 10s           # a wrong secret costs one token call per 10 s per key
 ```
 
 **Jittered token retries.** The token call's status retries wait the backoff spread at random by

@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -216,6 +217,82 @@ class TokenMintsIT {
 
     assertThat(callTogether(retrieval, 8)).hasSize(8).containsOnly("tok");
     assertThat(peer.calls()).isEqualTo(STATUS_CHAIN + 1);
+  }
+
+  // ---- the refusal memory, opt-in (#4587)
+
+  /**
+   * The measurement's shape: a refused credential and many callers in waves, the token calls
+   * counted. Without {@code refusal-memory} every wave calls (a 401 is not retried); with it the
+   * first wave's one call is the only one inside the memory.
+   */
+  @ParameterizedTest(name = "{0}, refusal-memory {1}")
+  @CsvSource({"sync, unset, 10", "sync, 10s, 1", "reactive, unset, 10", "reactive, 10s, 1"})
+  void refusalMemory_refusedCredential_callersInWaves(String type, String memory, int calls)
+      throws InterruptedException {
+    peer.answer(Answer.REFUSED, 50);
+    var retrieval = service(type, bearer -> {
+      if (!memory.equals("unset")) {
+        bearer.setRefusalMemory(Duration.ofSeconds(10));
+      }
+    });
+
+    for (int wave = 0; wave < 10; wave++) {
+      assertThat(callTogether(retrieval, 32)).hasSize(32).containsOnly(BEARER_TOKEN_EXCEPTION);
+    }
+
+    assertThat(peer.calls()).as("token calls for 10 waves of 32 callers").isEqualTo(calls);
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @ValueSource(strings = {"sync", "reactive"})
+  void refusalMemory_ofOneClient_isNeverServedToAnother(String type)
+      throws InterruptedException {
+    peer.answer(Answer.TOKEN, 50).refusePath("/realms/a/token");
+    var refused = service(type, bearer -> {
+      bearer.setTokenUrl(peer.tokenUrl().resolve("/realms/a/token"));
+      bearer.setRefusalMemory(Duration.ofSeconds(10));
+    });
+    var other = service(type, bearer -> {
+      bearer.setTokenUrl(peer.tokenUrl().resolve("/realms/b/token"));
+      bearer.setRefusalMemory(Duration.ofSeconds(10));
+    });
+
+    assertThat(callTogether(refused, 8)).containsOnly(BEARER_TOKEN_EXCEPTION);
+    assertThat(callTogether(other, 8)).hasSize(8).containsOnly("tok");
+    assertThat(callTogether(refused, 8)).hasSize(8).containsOnly(BEARER_TOKEN_EXCEPTION);
+
+    assertThat(peer.calls()).as("one refused call, one token call").isEqualTo(2);
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @ValueSource(strings = {"sync", "reactive"})
+  void refusalMemory_oncePassed_theFixedCredentialIsUsed(String type)
+      throws InterruptedException {
+    peer.answer(Answer.REFUSED, 0);
+    var retrieval = service(type, bearer -> bearer.setRefusalMemory(Duration.ofMillis(500)));
+    assertThat(callTogether(retrieval, 8)).containsOnly(BEARER_TOKEN_EXCEPTION);
+
+    peer.answer(Answer.TOKEN, 0);
+    assertThat(callTogether(retrieval, 8)).as("still remembered").containsOnly(
+        BEARER_TOKEN_EXCEPTION);
+    Awaitility.await().atMost(Duration.ofSeconds(5)).pollInterval(Duration.ofMillis(50))
+        .until(() -> callTogether(retrieval, 1).equals(List.of("tok")));
+
+    assertThat(peer.calls()).isEqualTo(2);
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @ValueSource(strings = {"sync", "reactive"})
+  void refusalMemory_isNotAFailureMemory_aRetryableFailureIsNotRemembered(String type)
+      throws InterruptedException {
+    peer.answer(Answer.UNAVAILABLE, 50);
+    var retrieval = service(type, bearer -> bearer.setRefusalMemory(Duration.ofSeconds(10)));
+
+    assertThat(callTogether(retrieval, 8)).containsOnly(BEARER_TOKEN_EXCEPTION);
+    assertThat(callTogether(retrieval, 8)).containsOnly(BEARER_TOKEN_EXCEPTION);
+
+    assertThat(peer.calls()).isEqualTo(2 * STATUS_CHAIN);
   }
 
   // ---- (c) jitter on the token call's status retries
