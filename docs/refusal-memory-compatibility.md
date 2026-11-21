@@ -24,7 +24,7 @@ before. This file is that claim, measured, not read from the code.
 
 **develop against the branch: 27 of 27 cells identical** in calls, outcomes and counter.
 
-**2.5.1 against the branch:** 15 cells differ, all in earlier 2.5.2 changes, none in this one:
+**2.5.1 against the branch:** 15 cells differ, all in earlier 2.6.0 changes, none in this one:
 - 9 cells (`503` and `401` on each type): 2.5.1 raised `OpenTmfClientResponseException`, and the
   branch raises `BearerTokenException`, its subclass. This is "A failed token call is its own
   type".

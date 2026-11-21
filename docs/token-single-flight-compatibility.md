@@ -50,7 +50,7 @@ retry waits are now jittered (±50 % of each wait), so a 1.4 s chain took 1.3 to
 
 **Against 2.5.1** every cell matches develop except the type of a failed token call's status
 error. 2.5.1 raised an `OpenTmfClientResponseException`; develop and the branch raise a
-`BearerTokenException`, its subclass. That is 2.5.2's earlier "A failed token call is its own
+`BearerTokenException`, its subclass. That is 2.6.0's earlier "A failed token call is its own
 type" change, not this one.
 
 | Type | Endpoint | Rounds × callers | 2.5.1 calls | develop calls | branch calls | Outcome on the branch (per caller) | Counter on the branch | 2.5.1 ms | develop ms | branch ms |

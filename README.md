@@ -436,7 +436,7 @@ Independent of the per-client beans, the starter registers these singletons:
 | `opentmfTokenFetchMeters` | `TokenFetchMeters` | Micrometer + a `MeterRegistry` bean — see [Token fetch](#token-fetch-transport-retry-typed-failure-metrics) |
 
 "A `MeterRegistry` bean" includes the one Boot's metrics auto-configuration makes (actuator or
-`spring-boot-micrometer-metrics`): the starter's auto-configuration runs after it. Before 2.5.2
+`spring-boot-micrometer-metrics`): the starter's auto-configuration runs after it. Before 2.6.0
 it did not, and only a registry the application declared itself was seen.
 
 You normally only autowire `HttpClientRegistry` (for dynamic clients); the others work behind the scenes — `ResilienceRegistries` is useful in tests or when you need direct access to a client's `CircuitBreaker`/`Bulkhead` instances.
@@ -760,13 +760,13 @@ single transport retry. `num-retries: 0` turns the status retry off. When wiring
 `SyncTokenClientImpl` by hand, pass the `ClientProperties` to get it — the constructors without
 them keep the transport retry only.
 
-### A failed token call since 2.5.2: what changes for users of 2.5.1
+### A failed token call since 2.6.0: what changes for users of 2.5.1
 
-Measured on the released 2.5.1 jars and on 2.5.2, with the same cells: a client of each type
+Measured on the released 2.5.1 jars and on 2.6.0, with the same cells: a client of each type
 (`jdk`, `apache`, `netty`) whose token endpoint answers `400`, `404`, `410` or `503` with a JSON
 body holding `error`, `error_description` and an echo of a credential.
 
-| | 2.5.1 (released) | 2.5.2 |
+| | 2.5.1 (released) | 2.6.0 |
 |---|---|---|
 | type, `400` / `410` / `503` | `OpenTmfClientResponseException` | `BearerTokenException` (an `OpenTmfClientResponseException`) |
 | type, `404` | `OpenTmfClientNotFoundException` | `BearerTokenException` — **no longer** an `OpenTmfClientNotFoundException` |
@@ -785,7 +785,7 @@ What to check when upgrading:
   Code that maps a `404` by its *status* (`getRawStatusCode() == 404`) still sees `404`; catch
   `BearerTokenException` ahead of it.
 - **A catch of `BearerTokenException`** now fires for every error status from the token
-  endpoint, on every client type; until 2.5.2 a failed token call raised it only on a reactive
+  endpoint, on every client type; until 2.6.0 a failed token call raised it only on a reactive
   token client built by hand over a `WebClient` without the library's error filter (there its
   message held the whole body; now it is the message above).
 - **Every token call that got an answer and failed is one of two types**, both
@@ -882,11 +882,11 @@ an identity provider that does not answer holds a mint for about twice
 **Why a cache alone does not stop the repeat.** A token is cached only once its call succeeded,
 and finding it, calling for it and storing it are three steps: every caller that finds no token
 calls. That happens on a cold cache, every time a cached token expires under load, and all the
-while an identity provider is failing, when nothing is ever stored. Until 2.5.2 each of those
+while an identity provider is failing, when nothing is ever stored. Until 2.6.0 each of those
 callers made its own token call, with its own retries. Measured at a stand-in token endpoint, K
 concurrent callers of one key, sync and reactive alike:
 
-| Case | Token calls until 2.5.1, K = 1 / 8 / 32 | Since 2.5.2 |
+| Case | Token calls until 2.5.1, K = 1 / 8 / 32 | Since 2.6.0 |
 |---|---|---|
 | Outage: the token endpoint answers `503` (default `num-retries: 3`) | 4 / 32 / 128 | 4 / 4 / 4 |
 | Outage: the connection fails (one transport retry) | 2 / 16 / 64 | 2 / 2 / 2 |
