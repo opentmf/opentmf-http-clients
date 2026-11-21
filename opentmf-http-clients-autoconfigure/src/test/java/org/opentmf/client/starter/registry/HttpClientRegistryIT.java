@@ -193,13 +193,14 @@ class HttpClientRegistryIT {
     contextRunner.run(context -> {
       var registry = immediateCloseRegistry(context);
       registry.getOrCreateReactive("mixed", properties());
+      var properties = properties();
 
       assertThatThrownBy(() -> registry.getOrCreateRestClient("mixed", ClientType.JDK,
-          properties()))
+          properties))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("reactive");
       assertThatThrownBy(() -> registry.getOrCreateRestClient("netty", ClientType.NETTY,
-          properties()))
+          properties))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("getOrCreateReactive");
       registry.destroy();

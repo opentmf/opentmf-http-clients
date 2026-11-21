@@ -96,12 +96,6 @@ class RestClientFactoryTest {
 
   @ParameterizedTest(name = "{0}")
   @MethodSource("factories")
-  void isARestClientFactory(String name, RestClientFactory factory) {
-    assertThat(factory).isInstanceOf(RestClientFactory.class);
-  }
-
-  @ParameterizedTest(name = "{0}")
-  @MethodSource("factories")
   void createRestClient_callsThroughTheBaseUrl(String name, RestClientFactory factory) {
     mockServer.when(request().withMethod("GET").withPath("/hello"), Times.once())
         .respond(response().withStatusCode(200).withBody("world"));
@@ -119,7 +113,9 @@ class RestClientFactoryTest {
 
     var restClient = factory.createRestClient(name, properties());
 
-    assertThatThrownBy(() -> restClient.get().uri("/missing").retrieve().body(String.class))
+    var response = restClient.get().uri("/missing").retrieve(); // lazy: no exchange yet
+
+    assertThatThrownBy(() -> response.body(String.class))
         .isInstanceOf(OpenTmfClientNotFoundException.class)
         .hasMessageContaining("no such thing");
   }
@@ -134,7 +130,9 @@ class RestClientFactoryTest {
 
     var restClient = factory.createRestClient(name, properties);
 
-    assertThatThrownBy(() -> restClient.get().uri("/broken").retrieve().body(String.class))
+    var response = restClient.get().uri("/broken").retrieve(); // lazy: no exchange yet
+
+    assertThatThrownBy(() -> response.body(String.class))
         .isInstanceOf(OpenTmfClientResponseException.class)
         .isNotInstanceOf(OpenTmfClientNotFoundException.class)
         .satisfies(ex -> assertThat(ex.getMessage()).doesNotContain("secret peer text"));
@@ -193,7 +191,8 @@ class RestClientFactoryTest {
 
     assertThat(registrar.createRestClient("old", ClientType.JDK, properties()).get().uri("/old")
         .retrieve().body(String.class)).isEqualTo("still here");
-    assertThatThrownBy(() -> registrar.createRestClient("old", ClientType.APACHE, properties()))
+    var properties = properties();
+    assertThatThrownBy(() -> registrar.createRestClient("old", ClientType.APACHE, properties))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("requires client-type: APACHE");
     Map<String, RestTemplateFactory> foreign = Map.of("own",
