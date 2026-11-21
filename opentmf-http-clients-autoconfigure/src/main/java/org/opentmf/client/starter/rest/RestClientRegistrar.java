@@ -282,7 +282,8 @@ public class RestClientRegistrar {
       }
       throw new IllegalStateException("Client '" + clientId + "' sets bearer-auth."
           + "request-timeout / bearer-auth.response-timeout, which need the client's "
-          + "HTTP client: use createTokenService(clientId, pipeline)");
+          + "HTTP client: use createTokenService(clientId, pipeline), or the deprecated "
+          + "createTokenService(clientId, restTemplate, restClient, properties)");
     }
     return TokenRequestFactories.forTokenCalls(clientFactory, properties, tokenProperties);
   }
