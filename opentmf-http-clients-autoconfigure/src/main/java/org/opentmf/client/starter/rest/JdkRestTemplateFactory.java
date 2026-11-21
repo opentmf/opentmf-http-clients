@@ -5,17 +5,15 @@ import java.net.InetSocketAddress;
 import java.net.ProxySelector;
 import java.net.http.HttpClient;
 import java.time.Duration;
+import java.util.ArrayList;
 import lombok.extern.slf4j.Slf4j;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.resilience.ResilienceRegistries;
 import org.opentmf.client.rest.service.api.OutboundInterceptorContribution;
 import org.opentmf.client.rest.util.GzipClientHttpRequestInterceptor;
-import org.opentmf.client.rest.util.OpenTmfResponseErrorHandler;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.util.StringUtils;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.web.util.DefaultUriBuilderFactory;
+import org.springframework.http.client.ClientHttpRequestInterceptor;
 
 @Configuration(proxyBeanMethods = false)
 @Slf4j
@@ -30,8 +28,8 @@ public class JdkRestTemplateFactory extends AbstractRestTemplateFactory {
   }
 
   @Override
-  public RestTemplate create(String clientId, ClientProperties properties) {
-    log.debug("Creating JDK HttpClient RestTemplate for client: {}", clientId);
+  SyncClientPipeline pipeline(String clientId, ClientProperties properties, String shape) {
+    log.debug("Creating JDK HttpClient {} for client: {}", shape, clientId);
     try {
       var builder = HttpClient.newBuilder()
           .connectTimeout(properties.getRequestTimeout())
@@ -50,26 +48,17 @@ public class JdkRestTemplateFactory extends AbstractRestTemplateFactory {
 
       var requestFactory = new CloseableJdkClientHttpRequestFactory(builder.build());
       requestFactory.setReadTimeout(readTimeout(properties));
-      var restTemplate = new RestTemplate(requestFactory);
-      restTemplate.setErrorHandler(
-          new OpenTmfResponseErrorHandler(properties));
-      applyObservationRegistry(restTemplate);
-      addContributedInterceptors(restTemplate);
-      addResilienceInterceptor(restTemplate, clientId, properties);
-
+      var interceptors = new ArrayList<ClientHttpRequestInterceptor>();
+      addContributedInterceptors(interceptors);
+      addResilienceInterceptor(interceptors, clientId, properties);
       if (properties.isCompressionEnabled()) {
-        restTemplate.getInterceptors().add(GzipClientHttpRequestInterceptor.instance());
+        interceptors.add(GzipClientHttpRequestInterceptor.instance());
       }
-      addFixedHeadersInterceptor(restTemplate, properties);
-      addLogbookInterceptor(restTemplate, properties);
-
-      if (StringUtils.hasText(properties.getBaseUrl())) {
-        restTemplate.setUriTemplateHandler(
-            new DefaultUriBuilderFactory(properties.getBaseUrl()));
-      }
-      return restTemplate;
+      addFixedHeadersInterceptor(interceptors, properties);
+      addLogbookInterceptor(interceptors, properties);
+      return pipelineOf(requestFactory, interceptors, properties);
     } catch (Exception e) {
-      throw new IllegalArgumentException("Failed to create JDK RestTemplate for " + clientId, e);
+      throw new IllegalArgumentException("Failed to create JDK " + shape + " for " + clientId, e);
     }
   }
 

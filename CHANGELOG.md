@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients) (v1x).
 For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-v1x) section in the README.
 
+## [2.6.0] - 2026-11-21
+
+### Added
+- **`RestClientFactory`, beside `RestTemplateFactory`.** Spring Framework 7.1 marks
+  `RestTemplate` and its `ResponseErrorHandler` for removal, so an application needs a way to
+  build and detect the library's synchronous clients without either. The JDK and Apache backends
+  now implement `RestClientFactory` (`createRestClient(clientId, properties)`) as well as
+  `RestTemplateFactory`; an application can use it as its `@ConditionalOnBean` marker in place of
+  `RestTemplateFactory`. `HttpClientRegistry` gains `getOrCreateRestClient` and
+  `replaceRestClient`, which return a `ManagedRestClient` (the `RestClient` and the token
+  service, no `RestTemplate`); under one name they see the same client as `getOrCreate` and
+  `replace`. `RestClientRegistrar` gains `createRestClient(clientId, type, properties)`,
+  `createPipeline(clientId, type, properties)` and `createTokenService(clientId, pipeline)`.
+
+### Changed
+- **The `RestClient` is built from the client's parts, no longer from its `RestTemplate`.** The
+  library builds each synchronous client's parts once — the HTTP client with its mTLS, pool and
+  time limits, the interceptors in their order, the observation registry, the base URL and the
+  error handling — and makes the `{clientId}RestClient` from them directly; the
+  `{clientId}RestTemplate` is made from the same parts. Both beans are still registered, share
+  one connection pool, and behave as before: the same interceptors in the same order, the same
+  Logbook output, the same circuit breaker, the same mTLS and proxy, the same `traceparent`, the
+  same exceptions.
+
+### Deprecated
+- **Every `RestTemplate` type and method of the library**, `@Deprecated(since = "2.6.0")` and not
+  for removal: `RestTemplateFactory`, `OpenTmfResponseErrorHandler`,
+  `HttpClientRegistry.ManagedSyncClient` with `getOrCreate` and `replace`, the `RestTemplate`
+  methods of `RestClientRegistrar` and `RestLogbookSupport`, and the backends' protected helpers
+  taking a `RestTemplate`. They keep working unchanged; an application that keeps using
+  `RestTemplate` changes nothing. The README's "Moving off `RestTemplate`" table names each
+  replacement.
+
 ## [2.5.2] - 2026-11-13
 
 ### Changed

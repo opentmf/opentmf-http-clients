@@ -21,6 +21,7 @@ import org.opentmf.client.common.model.ClientType;
 import org.opentmf.client.common.resilience.ResilienceRegistries;
 import org.opentmf.client.rest.resilience.ResilienceClientHttpRequestInterceptor;
 import org.opentmf.client.rest.service.api.OutboundInterceptorContribution;
+import org.opentmf.client.rest.service.api.RestClientFactory;
 import org.opentmf.client.rest.service.api.SyncTokenService;
 import org.opentmf.client.rest.util.GzipClientHttpRequestInterceptor;
 import org.opentmf.client.starter.OpentmfHttpClientsAutoConfiguration;
@@ -236,6 +237,54 @@ class OutboundInterceptorContributionIT {
               .getOrCreate("dynamic", ClientType.JDK, properties);
 
           assertThat(client.restClient().get().uri("/api/hello").retrieve().body(String.class))
+              .isEqualTo("hello");
+          assertThat(SEEN).containsExactly(
+              "early /api/hello X-Custom=null", "late /api/hello X-Custom=null");
+        });
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"jdk", "apache"})
+  void dynamicRestClientOnlyClients_carryTheContributions(String clientType) {
+    contextRunner
+        .withUserConfiguration(RecordingContributions.class)
+        .withPropertyValues("opentmf.http-clients.unused.base-url=http://localhost:9999")
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          var properties = new ClientProperties();
+          properties.setBaseUrl(baseUrl);
+          properties.setFixedHeaders(Map.of("X-Custom", "myvalue"));
+          var client = context.getBean(HttpClientRegistry.class)
+              .getOrCreateRestClient("dynamic", ClientType.valueOf(clientType.toUpperCase()),
+                  properties);
+
+          assertThat(client.restClient().get().uri("/api/hello").retrieve().body(String.class))
+              .isEqualTo("hello");
+          assertThat(SEEN).containsExactly(
+              "early /api/hello X-Custom=null", "late /api/hello X-Custom=null");
+        });
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"jdk", "apache"})
+  void theRestClientFactory_isABean_andItsClientsCarryTheContributions(String clientType) {
+    catalogClient(clientType)
+        .withUserConfiguration(RecordingContributions.class)
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          var factories = context.getBeansOfType(RestClientFactory.class);
+          assertThat(factories).isNotEmpty();
+          var properties = new ClientProperties();
+          properties.setBaseUrl(baseUrl);
+          properties.setFixedHeaders(Map.of("X-Custom", "myvalue"));
+          var type = ClientType.valueOf(clientType.toUpperCase());
+          var restClient = factories.values().stream()
+              .filter(factory -> type == ClientType.APACHE
+                  == factory.getClass().getSimpleName().startsWith("Apache"))
+              .findFirst().orElseThrow()
+              .createRestClient("adHoc", properties);
+
+          assertThat(restClient.get().uri("/api/hello").retrieve().body(String.class))
               .isEqualTo("hello");
           assertThat(SEEN).containsExactly(
               "early /api/hello X-Custom=null", "late /api/hello X-Custom=null");

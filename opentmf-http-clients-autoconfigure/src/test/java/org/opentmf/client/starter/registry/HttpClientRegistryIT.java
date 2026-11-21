@@ -127,6 +127,86 @@ class HttpClientRegistryIT {
   }
 
   @Test
+  void getOrCreateRestClient_isIdempotent_untilReplaceRestClient() {
+    contextRunner.run(context -> {
+      var registry = immediateCloseRegistry(context);
+      var first = registry.getOrCreateRestClient("onedms", ClientType.JDK, properties());
+      var again = registry.getOrCreateRestClient("onedms", ClientType.JDK, properties());
+      assertThat(again).isSameAs(first);
+      assertThat(first.restClient()).isNotNull();
+      assertThat(first.tokenService()).isNotNull();
+
+      var replaced = registry.replaceRestClient("onedms", ClientType.JDK, properties());
+      assertThat(replaced.restClient()).isNotSameAs(first.restClient());
+      assertThat(registry.names()).containsExactly("onedms");
+      registry.destroy();
+    });
+  }
+
+  @Test
+  void replaceRestClient_closesTheRetiredApacheClient() {
+    contextRunner.run(context -> {
+      var registry = immediateCloseRegistry(context);
+      var old = registry.getOrCreateRestClient("dxl", ClientType.APACHE, properties());
+      registry.replaceRestClient("dxl", ClientType.APACHE, properties());
+
+      var thrown = catchThrowable(() ->
+          old.restClient().get().uri("http://localhost:9999/x").retrieve().body(String.class));
+      assertThat(thrown).hasStackTraceContaining("shut down");
+      registry.destroy();
+    });
+  }
+
+  @Test
+  void evict_closesARestClientOnlyClient() {
+    contextRunner.run(context -> {
+      var registry = immediateCloseRegistry(context);
+      var managed = registry.getOrCreateRestClient("gone", ClientType.APACHE, properties());
+      assertThat(registry.evict("gone")).isTrue();
+
+      var thrown = catchThrowable(() ->
+          managed.restClient().get().uri("http://localhost:9999/x").retrieve().body(String.class));
+      assertThat(thrown).hasStackTraceContaining("shut down");
+      registry.destroy();
+    });
+  }
+
+  @Test
+  @SuppressWarnings("deprecation")
+  void bothViewsOfOneName_shareOneClient() {
+    contextRunner.run(context -> {
+      var registry = immediateCloseRegistry(context);
+      var restClientView = registry.getOrCreateRestClient("shared", ClientType.APACHE,
+          properties());
+      var bothView = registry.getOrCreate("shared", ClientType.APACHE, properties());
+
+      assertThat(bothView.restClient()).isSameAs(restClientView.restClient());
+      assertThat(bothView.tokenService()).isSameAs(restClientView.tokenService());
+      assertThat(registry.getOrCreate("shared", ClientType.APACHE, properties()).restTemplate())
+          .isSameAs(bothView.restTemplate());
+      registry.destroy();
+    });
+  }
+
+  @Test
+  void getOrCreateRestClient_onReactiveName_isRejected() {
+    contextRunner.run(context -> {
+      var registry = immediateCloseRegistry(context);
+      registry.getOrCreateReactive("mixed", properties());
+
+      assertThatThrownBy(() -> registry.getOrCreateRestClient("mixed", ClientType.JDK,
+          properties()))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("reactive");
+      assertThatThrownBy(() -> registry.getOrCreateRestClient("netty", ClientType.NETTY,
+          properties()))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("getOrCreateReactive");
+      registry.destroy();
+    });
+  }
+
+  @Test
   void typeMismatch_isRejectedClearly() {
     contextRunner.run(context -> {
       var registry = immediateCloseRegistry(context);

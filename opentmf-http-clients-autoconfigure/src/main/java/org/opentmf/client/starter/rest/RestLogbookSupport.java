@@ -31,8 +31,19 @@ public class RestLogbookSupport {
     this.tokenCallInterceptor = tokenCallInterceptor;
   }
 
+  /** Appends the client calls' Logbook interceptor to a client's interceptors. */
+  public void addInterceptor(List<ClientHttpRequestInterceptor> interceptors) {
+    interceptors.add(interceptor);
+  }
+
+  /**
+   * As {@link #addInterceptor(List)}, on the template's own list.
+   *
+   * @deprecated since 2.6.0: use {@link #addInterceptor(List)}.
+   */
+  @Deprecated(since = "2.6.0")
   public void addInterceptor(RestTemplate restTemplate) {
-    restTemplate.getInterceptors().add(interceptor);
+    addInterceptor(restTemplate.getInterceptors());
   }
 
   /** In a token call's interceptors: the token calls' Logbook interceptor for the client's. */

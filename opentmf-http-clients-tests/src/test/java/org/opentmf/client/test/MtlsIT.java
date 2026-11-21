@@ -10,6 +10,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockserver.integration.ClientAndServer;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.test.util.MtlsCertificateUtil;
@@ -17,6 +19,7 @@ import org.opentmf.client.test.util.MtlsCertificateUtil.CertificateBundle;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationContext;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -91,12 +94,7 @@ class MtlsIT {
   private ClientProperties mtlsReactiveClientProperties;
 
   @Autowired
-  @Qualifier("mtlsRestJdkRestTemplate")
-  private RestTemplate mtlsRestJdkRestTemplate;
-
-  @Autowired
-  @Qualifier("mtlsRestApacheRestTemplate")
-  private RestTemplate mtlsRestApacheRestTemplate;
+  private ApplicationContext context;
 
   // --- Verify certificates are configured ---
 
@@ -136,40 +134,28 @@ class MtlsIT {
         .verifyComplete();
   }
 
-  @Test
-  void testRestJdkClient_withCertificates_httpsGetSucceeds() {
-    mockGet("/rest-jdk-get", "jdk mTLS OK");
+  /** Both shapes of both sync backends: the RestTemplate and the RestClient bean. */
+  @ParameterizedTest(name = "{0} {1}")
+  @CsvSource({"Jdk, RestTemplate", "Jdk, RestClient", "Apache, RestTemplate",
+      "Apache, RestClient"})
+  void testRestClient_withCertificates_httpsGetSucceeds(String backend, String shape) {
+    var path = "/rest-" + backend + "-" + shape + "-get";
+    mockGet(path, backend + " mTLS OK");
 
-    String result = mtlsRestJdkRestTemplate.getForObject(
-        httpsBaseUrl + "/rest-jdk-get", String.class);
-    assertThat(result).isEqualTo("jdk mTLS OK");
+    assertThat(SyncShapes.get(context, "mtlsRest" + backend + shape, httpsBaseUrl + path))
+        .isEqualTo(backend + " mTLS OK");
   }
 
-  @Test
-  void testRestJdkClient_withCertificates_httpsPostSucceeds() {
-    mockPost("/rest-jdk-post", "jdk post OK");
+  @ParameterizedTest(name = "{0} {1}")
+  @CsvSource({"Jdk, RestTemplate", "Jdk, RestClient", "Apache, RestTemplate",
+      "Apache, RestClient"})
+  void testRestClient_withCertificates_httpsPostSucceeds(String backend, String shape) {
+    var path = "/rest-" + backend + "-" + shape + "-post";
+    mockPost(path, backend + " post OK");
 
-    String result = mtlsRestJdkRestTemplate.postForObject(
-        httpsBaseUrl + "/rest-jdk-post", "{\"key\":\"value\"}", String.class);
-    assertThat(result).isEqualTo("jdk post OK");
-  }
-
-  @Test
-  void testRestApacheClient_withCertificates_httpsGetSucceeds() {
-    mockGet("/rest-apache-get", "apache mTLS OK");
-
-    String result = mtlsRestApacheRestTemplate.getForObject(
-        httpsBaseUrl + "/rest-apache-get", String.class);
-    assertThat(result).isEqualTo("apache mTLS OK");
-  }
-
-  @Test
-  void testRestApacheClient_withCertificates_httpsPostSucceeds() {
-    mockPost("/rest-apache-post", "apache post OK");
-
-    String result = mtlsRestApacheRestTemplate.postForObject(
-        httpsBaseUrl + "/rest-apache-post", "{\"key\":\"value\"}", String.class);
-    assertThat(result).isEqualTo("apache post OK");
+    assertThat(SyncShapes.post(context, "mtlsRest" + backend + shape, httpsBaseUrl + path,
+        "{\"key\":\"value\"}"))
+        .isEqualTo(backend + " post OK");
   }
 
   // --- Negative tests: clients without certificates fail over HTTPS ---

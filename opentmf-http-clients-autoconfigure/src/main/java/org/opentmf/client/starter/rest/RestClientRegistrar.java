@@ -19,6 +19,7 @@ import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.model.ClientType;
 import org.opentmf.client.common.util.BearerAuthRequirements;
 import org.opentmf.client.common.util.TokenCallProperties;
+import org.opentmf.client.rest.service.api.RestClientFactory;
 import org.opentmf.client.rest.service.api.RestTemplateFactory;
 import org.opentmf.client.rest.service.api.SyncTokenService;
 import org.opentmf.client.rest.service.impl.NoOpSyncTokenService;
@@ -48,53 +49,108 @@ import org.springframework.web.client.RestTemplate;
 public class RestClientRegistrar {
 
   private final ConfigurableListableBeanFactory factory;
-  private final Map<ClientType, RestTemplateFactory> restTemplateFactories;
+  private final Map<ClientType, AbstractRestTemplateFactory> backends;
   private final ObjectProvider<TokenFetchMeters> tokenFetchMetersProvider;
   private final @Nullable RestLogbookSupport logbookSupport;
 
+  /**
+   * @param factoryBeans the library's JDK and Apache backends, by bean name
+   * @since 2.6.0
+   */
   @Autowired
   public RestClientRegistrar(ConfigurableApplicationContext ctx,
-      Map<String, RestTemplateFactory> factoryBeans,
       ObjectProvider<TokenFetchMeters> tokenFetchMetersProvider,
-      ObjectProvider<RestLogbookSupport> logbookSupportProvider) {
+      ObjectProvider<RestLogbookSupport> logbookSupportProvider,
+      Map<String, RestClientFactory> factoryBeans) {
     this.factory = ctx.getBeanFactory();
-    this.restTemplateFactories = factoryBeans.values().stream()
-        .collect(Collectors.toMap(this::detectType, f -> f));
+    this.backends = factoryBeans.values().stream()
+        .collect(Collectors.toMap(this::detectType, RestClientRegistrar::backend));
     this.tokenFetchMetersProvider = tokenFetchMetersProvider;
     this.logbookSupport = logbookSupportProvider.getIfAvailable();
   }
 
+  /**
+   * As {@link #RestClientRegistrar(ConfigurableApplicationContext, ObjectProvider,
+   * ObjectProvider, Map)}, with the backends by their {@code RestTemplateFactory} type.
+   *
+   * @deprecated since 2.6.0: use the constructor taking the {@link RestClientFactory} beans.
+   */
+  @Deprecated(since = "2.6.0")
+  public RestClientRegistrar(ConfigurableApplicationContext ctx,
+      Map<String, RestTemplateFactory> factoryBeans,
+      ObjectProvider<TokenFetchMeters> tokenFetchMetersProvider,
+      ObjectProvider<RestLogbookSupport> logbookSupportProvider) {
+    this(ctx, tokenFetchMetersProvider, logbookSupportProvider,
+        factoryBeans.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey,
+            entry -> restClientFactory(entry.getValue()))));
+  }
+
+  /**
+   * Registers the client's {@code <id>RestClient}, {@code <id>RestTemplate} and
+   * {@code <id>TokenService} beans, all three over one {@link SyncClientPipeline}, so over one
+   * connection pool.
+   */
+  @SuppressWarnings("deprecation") // the <id>RestTemplate bean stays registered by default
   public void registerBeans(String clientId, ClientType clientType, ClientProperties properties) {
     BearerAuthRequirements.requireTokenUrl(clientId, properties);
-    var restTemplate = createRestTemplate(clientId, clientType, properties);
-    var restClient = createRestClient(restTemplate, properties);
-    registerIfAbsent(clientId + REST_TEMPLATE, restTemplate);
-    registerIfAbsent(clientId + REST_CLIENT, restClient);
-    registerIfAbsent(clientId + TOKEN_SERVICE,
-        createTokenService(clientId, restTemplate, restClient, properties));
+    var pipeline = createPipeline(clientId, clientType, properties);
+    registerIfAbsent(clientId + REST_TEMPLATE, pipeline.restTemplate());
+    registerIfAbsent(clientId + REST_CLIENT, pipeline.restClient());
+    registerIfAbsent(clientId + TOKEN_SERVICE, createTokenService(clientId, pipeline));
+  }
+
+  /**
+   * Builds the {@link SyncClientPipeline} of the given client type without registering any bean
+   * — the entry point for lifecycle-managing callers such as the dynamic-client registry. Its
+   * {@code restClient()} is the client; its {@code requestFactory()} owns the connection pool.
+   *
+   * @throws IllegalStateException when no factory for the client type is on the classpath
+   * @since 2.6.0
+   */
+  public SyncClientPipeline createPipeline(String clientId, ClientType clientType,
+      ClientProperties properties) {
+    return backend(clientId, clientType).pipeline(clientId, properties);
+  }
+
+  /**
+   * Builds a fully configured {@code RestClient} for the given client type without registering
+   * any bean. As {@code createPipeline(clientId, clientType, properties).restClient()}.
+   *
+   * @throws IllegalStateException when no factory for the client type is on the classpath
+   * @since 2.6.0
+   */
+  public RestClient createRestClient(String clientId, ClientType clientType,
+      ClientProperties properties) {
+    return createPipeline(clientId, clientType, properties).restClient();
   }
 
   /**
    * Builds a fully configured {@code RestTemplate} for the given client type without registering
-   * any bean — the entry point for lifecycle-managing callers such as the dynamic-client
-   * registry.
+   * any bean.
    *
    * @throws IllegalStateException when no factory for the client type is on the classpath
+   * @deprecated since 2.6.0: use {@link #createRestClient(String, ClientType, ClientProperties)}
+   *     or {@link #createPipeline(String, ClientType, ClientProperties)}.
    */
+  @Deprecated(since = "2.6.0")
   public RestTemplate createRestTemplate(String clientId, ClientType clientType,
       ClientProperties properties) {
-    RestTemplateFactory rtFactory = restTemplateFactories.get(clientType);
-    if (rtFactory == null) {
+    return backend(clientId, clientType).create(clientId, properties);
+  }
+
+  private AbstractRestTemplateFactory backend(String clientId, ClientType clientType) {
+    var backend = backends.get(clientType);
+    if (backend == null) {
       var msg = "Client '" + clientId + "' requires client-type: " + clientType
           + ", but no matching library is on the classpath. "
-          + "Available implementations: " + restTemplateFactories.keySet() + ". "
+          + "Available implementations: " + backends.keySet() + ". "
           + (clientType == ClientType.APACHE
               ? "Add org.apache.httpcomponents.client5:httpclient5 to your classpath."
               : "Check your dependencies.");
       log.error(msg);
       throw new IllegalStateException(msg);
     }
-    return rtFactory.create(clientId, properties);
+    return backend;
   }
 
   /**
@@ -103,7 +159,10 @@ public class RestClientRegistrar {
    * messages carry the peer's text whole and cut a non-JSON body at 2000 characters, as in
    * earlier releases; it ignores every client setting, which
    * {@link #createRestClient(RestTemplate, ClientProperties)} follows.
+   *
+   * @deprecated since 2.6.0: use {@link #createRestClient(String, ClientType, ClientProperties)}.
    */
+  @Deprecated(since = "2.6.0")
   public RestClient createRestClient(RestTemplate restTemplate) {
     return createRestClient(restTemplate, OpenTmfRestClientStatusHandler.errorHandler());
   }
@@ -113,7 +172,9 @@ public class RestClientRegistrar {
    * {@code peer-text-in-message} and {@code peer-text-cap-length}.
    *
    * @throws IllegalArgumentException when the cap length is outside its bounds
+   * @deprecated since 2.6.0: use {@link #createRestClient(String, ClientType, ClientProperties)}.
    */
+  @Deprecated(since = "2.6.0")
   public RestClient createRestClient(RestTemplate restTemplate, ClientProperties properties) {
     return createRestClient(restTemplate, OpenTmfRestClientStatusHandler.errorHandler(properties));
   }
@@ -127,33 +188,55 @@ public class RestClientRegistrar {
 
   /**
    * Builds the token service matching the client's auth configuration. Token calls run through
-   * the given {@code RestClient}, so they share its decoration (incl. resilience) — all but its
-   * {@code fixed-headers}, which never reach the token endpoint. Bearer mints
-   * are counted on {@code opentmf.client.token.fetch{client=<clientId>}} when a
-   * {@code MeterRegistry} bean exists; a {@code null} client id opts out of the counter.
+   * the pipeline's {@code RestClient}, so they share its decoration (incl. resilience) — all but
+   * its {@code fixed-headers}, which never reach the token endpoint. Bearer mints are counted on
+   * {@code opentmf.client.token.fetch{client=<clientId>}} when a {@code MeterRegistry} bean
+   * exists.
    *
    * <p>The token calls run on the client's own timeouts and retries, except where
    * {@code bearer-auth} sets the token request's own {@code request-timeout},
    * {@code response-timeout} or {@code num-retries}; the token's own timeouts are applied over the
-   * given {@code RestTemplate}'s HTTP client, so the connection pool stays shared.</p>
+   * pipeline's HTTP client, so the connection pool stays shared.</p>
+   *
+   * @since 2.6.0
    */
+  public SyncTokenService createTokenService(String clientId, SyncClientPipeline pipeline) {
+    return createTokenService(clientId, pipeline.requestFactory(), pipeline.restClient(),
+        pipeline.properties());
+  }
+
+  /**
+   * As {@link #createTokenService(String, SyncClientPipeline)}, over the given
+   * {@code RestTemplate}'s HTTP client and {@code RestClient}; a {@code null} client id opts out
+   * of the token-fetch counter.
+   *
+   * @deprecated since 2.6.0: use {@link #createTokenService(String, SyncClientPipeline)}.
+   */
+  @Deprecated(since = "2.6.0")
   public SyncTokenService createTokenService(@Nullable String clientId,
       RestTemplate restTemplate, RestClient restClient, ClientProperties properties) {
+    return createTokenService(clientId, rawRequestFactory(restTemplate), restClient, properties);
+  }
+
+  private SyncTokenService createTokenService(@Nullable String clientId,
+      @Nullable ClientHttpRequestFactory clientFactory, RestClient restClient,
+      ClientProperties properties) {
     return switch (properties.getAuthType()) {
       case NONE -> new NoOpSyncTokenService();
       case BASIC -> new SyncBasicTokenServiceImpl(properties.getBasicAuth());
-      case BEARER -> buildSyncBearerTokenService(clientId, restTemplate, restClient, properties);
+      case BEARER -> buildSyncBearerTokenService(clientId, clientFactory, restClient, properties);
     };
   }
 
   /**
-   * As {@link #createTokenService(String, RestTemplate, RestClient, ClientProperties)}, without
-   * the client's {@code RestTemplate}: the token request's own {@code request-timeout} /
-   * {@code response-timeout} cannot be applied then, and setting them fails.
+   * As {@link #createTokenService(String, SyncClientPipeline)}, without the client's HTTP
+   * client: the token request's own {@code request-timeout} / {@code response-timeout} cannot be
+   * applied then, and setting them fails. A {@code null} client id opts out of the token-fetch
+   * counter.
    */
   public SyncTokenService createTokenService(@Nullable String clientId, RestClient restClient,
       ClientProperties properties) {
-    return createTokenService(clientId, null, restClient, properties);
+    return createTokenService(clientId, (ClientHttpRequestFactory) null, restClient, properties);
   }
 
   /**
@@ -166,13 +249,14 @@ public class RestClientRegistrar {
   }
 
   private SyncTokenService buildSyncBearerTokenService(@Nullable String clientId,
-      @Nullable RestTemplate restTemplate, RestClient restClient, ClientProperties properties) {
+      @Nullable ClientHttpRequestFactory clientFactory, RestClient restClient,
+      ClientProperties properties) {
     var bearerConfig = properties.getBearerAuth();
     if (bearerConfig.isUseMock()) {
       return new SyncBearerTokenServiceMockImpl();
     }
     BearerAuthRequirements.requireTokenUrl(clientId, properties);
-    var tokenFactory = tokenRequestFactory(clientId, restTemplate, properties);
+    var tokenFactory = tokenRequestFactory(clientId, clientFactory, properties);
     var syncTokenClient = new SyncTokenClientImpl(
         tokenRestClient(restClient, tokenFactory, bearerConfig), properties, bearerConfig,
         tokenFetchListener(clientId));
@@ -186,22 +270,21 @@ public class RestClientRegistrar {
    * timeouts, else {@code null}: the token calls then run on the client's request factory.
    */
   private static @Nullable ClientHttpRequestFactory tokenRequestFactory(@Nullable String clientId,
-      @Nullable RestTemplate restTemplate, ClientProperties properties) {
+      @Nullable ClientHttpRequestFactory clientFactory, ClientProperties properties) {
     var tokenProperties = TokenCallProperties.of(properties);
     if (tokenProperties == properties) {
       return null;
     }
-    if (restTemplate == null) {
+    if (clientFactory == null) {
       if (tokenProperties.getRequestTimeout().equals(properties.getRequestTimeout())
           && tokenProperties.getResponseTimeout().equals(properties.getResponseTimeout())) {
         return null;
       }
       throw new IllegalStateException("Client '" + clientId + "' sets bearer-auth."
           + "request-timeout / bearer-auth.response-timeout, which need the client's "
-          + "RestTemplate: use createTokenService(clientId, restTemplate, restClient, properties)");
+          + "HTTP client: use createTokenService(clientId, pipeline)");
     }
-    return TokenRequestFactories.forTokenCalls(rawRequestFactory(restTemplate), properties,
-        tokenProperties);
+    return TokenRequestFactories.forTokenCalls(clientFactory, properties, tokenProperties);
   }
 
   /**
@@ -209,6 +292,7 @@ public class RestClientRegistrar {
    * {@code RestTemplate.getRequestFactory()} returns an intercepting facade over it; clearing the
    * interceptor list for the lookup returns the factory itself.
    */
+  @SuppressWarnings("deprecation") // serves the deprecated RestTemplate path only
   private static ClientHttpRequestFactory rawRequestFactory(RestTemplate restTemplate) {
     var interceptors = List.copyOf(restTemplate.getInterceptors());
     restTemplate.getInterceptors().clear();
@@ -247,9 +331,23 @@ public class RestClientRegistrar {
     return meters == null ? TokenFetchListener.noop() : meters.listenerFor(clientId);
   }
 
-  private ClientType detectType(RestTemplateFactory factory) {
+  private ClientType detectType(RestClientFactory factory) {
     if (factory instanceof ApacheRestTemplateFactory) return ClientType.APACHE;
     if (factory instanceof JdkRestTemplateFactory) return ClientType.JDK;
+    throw new IllegalStateException("Unknown RestClientFactory type: " + factory.getClass()
+        + ". Available implementations: Apache HttpClient 5, JDK HttpClient.");
+  }
+
+  private static AbstractRestTemplateFactory backend(RestClientFactory factory) {
+    return (AbstractRestTemplateFactory) factory;
+  }
+
+  /** A library backend given by its deprecated type, as the one it also is. */
+  @SuppressWarnings("deprecation")
+  private static RestClientFactory restClientFactory(RestTemplateFactory factory) {
+    if (factory instanceof RestClientFactory restClientFactory) {
+      return restClientFactory;
+    }
     throw new IllegalStateException("Unknown RestTemplateFactory type: " + factory.getClass()
         + ". Available implementations: Apache HttpClient 5, JDK HttpClient.");
   }
