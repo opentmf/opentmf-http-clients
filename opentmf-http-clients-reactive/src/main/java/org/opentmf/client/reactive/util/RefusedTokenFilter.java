@@ -1,5 +1,6 @@
 package org.opentmf.client.reactive.util;
 
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.opentmf.client.common.util.InvalidTokenRefusals;
 import org.springframework.http.HttpHeaders;
@@ -21,7 +22,8 @@ import reactor.core.publisher.Mono;
  */
 public final class RefusedTokenFilter implements ExchangeFilterFunction {
 
-  private volatile Consumer<String> onRefused = token -> { };
+  private final AtomicReference<Consumer<String>> onRefused =
+      new AtomicReference<>(token -> { });
 
   @Override
   public Mono<ClientResponse> filter(ClientRequest request, ExchangeFunction next) {
@@ -29,12 +31,12 @@ public final class RefusedTokenFilter implements ExchangeFilterFunction {
         .refusedToken(response.statusCode().value(),
             response.headers().header(HttpHeaders.WWW_AUTHENTICATE),
             request.headers().getFirst(HttpHeaders.AUTHORIZATION))
-        .ifPresent(onRefused));
+        .ifPresent(onRefused.get()));
   }
 
   /** Sends each refused token to {@code onRefused} from now on. */
   public void bind(Consumer<String> onRefused) {
-    this.onRefused = onRefused;
+    this.onRefused.set(onRefused);
   }
 
   /**

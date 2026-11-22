@@ -1,6 +1,7 @@
 package org.opentmf.client.rest.util;
 
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.opentmf.client.common.util.InvalidTokenRefusals;
 import org.springframework.http.HttpHeaders;
@@ -20,7 +21,8 @@ import org.springframework.web.client.RestClient;
  */
 public final class RefusedTokenInterceptor implements ClientHttpRequestInterceptor {
 
-  private volatile Consumer<String> onRefused = token -> { };
+  private final AtomicReference<Consumer<String>> onRefused =
+      new AtomicReference<>(token -> { });
 
   @Override
   public ClientHttpResponse intercept(HttpRequest request, byte[] body,
@@ -29,13 +31,13 @@ public final class RefusedTokenInterceptor implements ClientHttpRequestIntercept
     InvalidTokenRefusals.refusedToken(response.getStatusCode().value(),
             response.getHeaders().get(HttpHeaders.WWW_AUTHENTICATE),
             request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION))
-        .ifPresent(onRefused);
+        .ifPresent(onRefused.get());
     return response;
   }
 
   /** Sends each refused token to {@code onRefused} from now on. */
   public void bind(Consumer<String> onRefused) {
-    this.onRefused = onRefused;
+    this.onRefused.set(onRefused);
   }
 
   /**

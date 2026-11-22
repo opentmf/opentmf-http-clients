@@ -99,8 +99,9 @@ public class RestClientRegistrar {
     }
     var restTemplate = rtFactory.create(clientId, properties);
     if (usesMintedTokens(properties)) {
-      // just inside the library's own interceptors and ahead of Logbook, which stays innermost;
-      // it reads the answer's status and headers only, and binds to the token service later
+      // The refused-token hook goes just inside the library's own interceptors and ahead of
+      // Logbook, which stays innermost. It reads only the answer's status and headers, and it is
+      // bound to the token service later.
       var interceptors = restTemplate.getInterceptors();
       int at = interceptors.size();
       while (at > 0 && interceptors.get(at - 1) instanceof BodyReadFailureGuard) {
