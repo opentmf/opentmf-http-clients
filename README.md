@@ -399,7 +399,7 @@ For each entry in the `http-clients` map with key `clientId`, the registered bea
 |---|---|
 | `{clientId}ClientProperties` | `ClientProperties` |
 | `{clientId}RestClient` | `RestClient` (recommended) |
-| `{clientId}RestTemplate` | `RestTemplate` (deprecated: Spring Framework 7.1 marks it for removal) |
+| `{clientId}RestTemplate` | `RestTemplate` (supported; Spring Framework 7.1 marks it for removal) |
 | `{clientId}TokenService` | `SyncTokenService` |
 
 Both a `RestClient` and a `RestTemplate` bean are registered for each REST client. The `RestClient` is the recommended choice for new code — it provides a modern fluent API, works naturally with virtual threads (Java 21+), and is the official replacement for `RestTemplate` in Spring Framework 7+.
@@ -408,7 +408,7 @@ Since 2.6.0 the library builds each client's parts once — the HTTP client with
 
 #### Moving off `RestTemplate` (since 2.6.0)
 
-Spring Framework 7.1 marks `RestTemplate` and its `ResponseErrorHandler` for removal. The library keeps every `RestTemplate` type and method working unchanged and marks them `@Deprecated(since = "2.6.0")`, not for removal; an application that keeps using them changes nothing. To move:
+Spring Framework 7.1 marks `RestTemplate` and its `ResponseErrorHandler` for removal. The library keeps every `RestTemplate` type and method supported and working unchanged; they are not marked deprecated, and an application that keeps using them changes nothing. `RestClientFactory` and the `RestClient` entry points are the recommended ones; the Javadoc of each older entry point names its newer one. To move:
 
 | Instead of | Use |
 |---|---|
@@ -454,7 +454,7 @@ public class MyCatalogService {
   private final TokenService reactiveApiTokenService;
 
   private final RestClient syncApiRestClient;     // recommended
-  private final RestTemplate syncApiRestTemplate;  // deprecated
+  private final RestTemplate syncApiRestTemplate;  // supported
   private final SyncTokenService syncApiTokenService;
   // ...
 }
@@ -545,7 +545,7 @@ public class CatalogService {
 }
 ```
 
-#### RestTemplate (JDK or Apache) — deprecated
+#### RestTemplate (JDK or Apache) — supported, `RestClient` recommended
 
 `RestTemplate` is mutable — add interceptors or message converters directly:
 
@@ -1284,7 +1284,7 @@ var reactive = registry.getOrCreateReactive("asgw", props);
 reactive.webClient(); reactive.tokenService();
 ```
 
-`getOrCreate` and `replace` (deprecated since 2.6.0) return the same client with its `RestTemplate` as well (`ManagedSyncClient`); under one name both pairs of methods see the same client.
+`getOrCreate` and `replace` (supported; `getOrCreateRestClient` and `replaceRestClient` are recommended since 2.6.0) return the same client with its `RestTemplate` as well (`ManagedSyncClient`); under one name both pairs of methods see the same client.
 
 Semantics:
 

@@ -73,9 +73,9 @@ public class RestClientRegistrar {
    * As {@link #RestClientRegistrar(ConfigurableApplicationContext, ObjectProvider,
    * ObjectProvider, Map)}, with the backends by their {@code RestTemplateFactory} type.
    *
-   * @deprecated since 2.6.0: use the constructor taking the {@link RestClientFactory} beans.
+   * <p>Recommended since 2.6.0: use the constructor taking the {@link RestClientFactory} beans.
+   * This one stays supported.</p>
    */
-  @Deprecated(since = "2.6.0")
   public RestClientRegistrar(ConfigurableApplicationContext ctx,
       Map<String, RestTemplateFactory> factoryBeans,
       ObjectProvider<TokenFetchMeters> tokenFetchMetersProvider,
@@ -90,7 +90,6 @@ public class RestClientRegistrar {
    * {@code <id>TokenService} beans, all three over one {@link SyncClientPipeline}, so over one
    * connection pool.
    */
-  @SuppressWarnings("deprecation") // the <id>RestTemplate bean stays registered by default
   public void registerBeans(String clientId, ClientType clientType, ClientProperties properties) {
     BearerAuthRequirements.requireTokenUrl(clientId, properties);
     var pipeline = createPipeline(clientId, clientType, properties);
@@ -128,11 +127,11 @@ public class RestClientRegistrar {
    * Builds a fully configured {@code RestTemplate} for the given client type without registering
    * any bean.
    *
+   * <p>Recommended since 2.6.0: use {@link #createRestClient(String, ClientType, ClientProperties)}
+   * or {@link #createPipeline(String, ClientType, ClientProperties)}. This one stays supported.</p>
+   *
    * @throws IllegalStateException when no factory for the client type is on the classpath
-   * @deprecated since 2.6.0: use {@link #createRestClient(String, ClientType, ClientProperties)}
-   *     or {@link #createPipeline(String, ClientType, ClientProperties)}.
    */
-  @Deprecated(since = "2.6.0")
   public RestTemplate createRestTemplate(String clientId, ClientType clientType,
       ClientProperties properties) {
     return backend(clientId, clientType).create(clientId, properties);
@@ -160,9 +159,9 @@ public class RestClientRegistrar {
    * earlier releases; it ignores every client setting, which
    * {@link #createRestClient(RestTemplate, ClientProperties)} follows.
    *
-   * @deprecated since 2.6.0: use {@link #createRestClient(String, ClientType, ClientProperties)}.
+   * <p>Recommended since 2.6.0: use {@link #createRestClient(String, ClientType,
+   * ClientProperties)}. This one stays supported.</p>
    */
-  @Deprecated(since = "2.6.0")
   public RestClient createRestClient(RestTemplate restTemplate) {
     return createRestClient(restTemplate, OpenTmfRestClientStatusHandler.errorHandler());
   }
@@ -171,10 +170,11 @@ public class RestClientRegistrar {
    * As {@link #createRestClient(RestTemplate)}, its error messages following the client's
    * {@code peer-text-in-message} and {@code peer-text-cap-length}.
    *
+   * <p>Recommended since 2.6.0: use {@link #createRestClient(String, ClientType,
+   * ClientProperties)}. This one stays supported.</p>
+   *
    * @throws IllegalArgumentException when the cap length is outside its bounds
-   * @deprecated since 2.6.0: use {@link #createRestClient(String, ClientType, ClientProperties)}.
    */
-  @Deprecated(since = "2.6.0")
   public RestClient createRestClient(RestTemplate restTemplate, ClientProperties properties) {
     return createRestClient(restTemplate, OpenTmfRestClientStatusHandler.errorHandler(properties));
   }
@@ -210,9 +210,9 @@ public class RestClientRegistrar {
    * {@code RestTemplate}'s HTTP client and {@code RestClient}; a {@code null} client id opts out
    * of the token-fetch counter.
    *
-   * @deprecated since 2.6.0: use {@link #createTokenService(String, SyncClientPipeline)}.
+   * <p>Recommended since 2.6.0: use {@link #createTokenService(String, SyncClientPipeline)}. This
+   * one stays supported.</p>
    */
-  @Deprecated(since = "2.6.0")
   public SyncTokenService createTokenService(@Nullable String clientId,
       RestTemplate restTemplate, RestClient restClient, ClientProperties properties) {
     return createTokenService(clientId, rawRequestFactory(restTemplate), restClient, properties);
@@ -282,7 +282,7 @@ public class RestClientRegistrar {
       }
       throw new IllegalStateException("Client '" + clientId + "' sets bearer-auth."
           + "request-timeout / bearer-auth.response-timeout, which need the client's "
-          + "HTTP client: use createTokenService(clientId, pipeline), or the deprecated "
+          + "HTTP client: use createTokenService(clientId, pipeline), or "
           + "createTokenService(clientId, restTemplate, restClient, properties)");
     }
     return TokenRequestFactories.forTokenCalls(clientFactory, properties, tokenProperties);
@@ -293,7 +293,6 @@ public class RestClientRegistrar {
    * {@code RestTemplate.getRequestFactory()} returns an intercepting facade over it; clearing the
    * interceptor list for the lookup returns the factory itself.
    */
-  @SuppressWarnings("deprecation") // serves the deprecated RestTemplate path only
   private static ClientHttpRequestFactory rawRequestFactory(RestTemplate restTemplate) {
     var interceptors = List.copyOf(restTemplate.getInterceptors());
     restTemplate.getInterceptors().clear();
@@ -343,8 +342,7 @@ public class RestClientRegistrar {
     return (AbstractRestTemplateFactory) factory;
   }
 
-  /** A library backend given by its deprecated type, as the one it also is. */
-  @SuppressWarnings("deprecation")
+  /** A library backend given by its {@code RestTemplateFactory} type, as the one it also is. */
   private static RestClientFactory restClientFactory(RestTemplateFactory factory) {
     if (factory instanceof RestClientFactory restClientFactory) {
       return restClientFactory;

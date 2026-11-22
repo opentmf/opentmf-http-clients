@@ -227,14 +227,14 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   up to half of it either way, so the token calls of callers, keys and pods that failed together
   do not retry together. The number of retries and the `Retry-After` handling are unchanged.
 
-### Deprecated
-- **Every `RestTemplate` type and method of the library**, `@Deprecated(since = "2.6.0")` and not
-  for removal: `RestTemplateFactory`, `OpenTmfResponseErrorHandler`,
+- **The `RestTemplate` entry points stay supported; `RestClientFactory` is the recommended one.**
+  Spring Framework 7.1 marks `RestTemplate` for removal. The library's `RestTemplate` types and
+  methods — `RestTemplateFactory`, `OpenTmfResponseErrorHandler`,
   `HttpClientRegistry.ManagedSyncClient` with `getOrCreate` and `replace`, the `RestTemplate`
   methods of `RestClientRegistrar` and `RestLogbookSupport`, and the backends' protected helpers
-  taking a `RestTemplate`. They keep working unchanged; an application that keeps using
-  `RestTemplate` changes nothing. The README's "Moving off `RestTemplate`" table names each
-  replacement.
+  taking a `RestTemplate` — are not marked deprecated and keep working unchanged; their Javadoc
+  names the newer entry point. An application that keeps using `RestTemplate` changes nothing. The
+  README's "Moving off `RestTemplate`" table names each newer entry point.
 
 ### Fixed
 - **The library's meters were never registered in an application whose `MeterRegistry` comes

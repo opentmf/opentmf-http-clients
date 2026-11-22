@@ -140,7 +140,6 @@ class RestClientFactoryTest {
 
   @ParameterizedTest(name = "{0}")
   @MethodSource("factories")
-  @SuppressWarnings("deprecation")
   void createRestClient_carriesTheTemplatesInterceptorsInTheSameOrder(String name,
       RestClientFactory factory) {
     var properties = properties();
@@ -177,8 +176,7 @@ class RestClientFactoryTest {
   }
 
   @Test
-  @SuppressWarnings("deprecation")
-  void theRegistrarsDeprecatedConstructor_takesTheBackendsByTheirTemplateType() {
+  void theRegistrarsTemplateTypedConstructor_takesTheBackendsByTheirTemplateType() {
     mockServer.when(request().withMethod("GET").withPath("/old"), Times.once())
         .respond(response().withStatusCode(200).withBody("still here"));
     var context = new GenericApplicationContext();

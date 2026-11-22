@@ -172,7 +172,6 @@ class HttpClientRegistryIT {
   }
 
   @Test
-  @SuppressWarnings("deprecation")
   void bothViewsOfOneName_shareOneClient() {
     contextRunner.run(context -> {
       var registry = immediateCloseRegistry(context);

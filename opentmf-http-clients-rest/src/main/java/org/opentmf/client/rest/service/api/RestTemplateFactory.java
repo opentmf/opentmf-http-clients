@@ -6,11 +6,9 @@ import org.springframework.web.client.RestTemplate;
 /**
  * Builds a fully configured {@link RestTemplate} for a client.
  *
- * @deprecated since 2.6.0: Spring marks {@code RestTemplate} for removal. Use
- *     {@link RestClientFactory}, whose clients carry the same configuration; this interface
- *     keeps working unchanged.
+ * <p>Since 2.6.0: Spring marks {@code RestTemplate} for removal. Use {@link RestClientFactory},
+ * whose clients carry the same configuration; this interface keeps working unchanged.</p>
  */
-@Deprecated(since = "2.6.0")
 public interface RestTemplateFactory {
 
   RestTemplate create(String clientId, ClientProperties properties);

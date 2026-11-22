@@ -79,10 +79,9 @@ public final class SyncClientPipeline {
    * factory and interceptors, the same observation registry and base URL, and
    * {@link OpenTmfResponseErrorHandler}, which throws the same exceptions.
    *
-   * @deprecated since 2.6.0: Spring marks {@code RestTemplate} for removal; use
-   *     {@link #restClient()}.
+   * <p>Since 2.6.0: Spring marks {@code RestTemplate} for removal; use {@link #restClient()}. This
+   * one stays supported.</p>
    */
-  @Deprecated(since = "2.6.0")
   public RestTemplate restTemplate() {
     var restTemplate = new RestTemplate(requestFactory);
     restTemplate.setErrorHandler(new OpenTmfResponseErrorHandler(properties));

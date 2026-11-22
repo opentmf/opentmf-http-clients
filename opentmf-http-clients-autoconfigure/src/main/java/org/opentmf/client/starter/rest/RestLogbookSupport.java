@@ -39,9 +39,8 @@ public class RestLogbookSupport {
   /**
    * As {@link #addInterceptor(List)}, on the template's own list.
    *
-   * @deprecated since 2.6.0: use {@link #addInterceptor(List)}.
+   * <p>Recommended since 2.6.0: use {@link #addInterceptor(List)}. This one stays supported.</p>
    */
-  @Deprecated(since = "2.6.0")
   public void addInterceptor(RestTemplate restTemplate) {
     addInterceptor(restTemplate.getInterceptors());
   }

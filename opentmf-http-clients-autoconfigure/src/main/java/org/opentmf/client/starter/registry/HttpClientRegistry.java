@@ -51,11 +51,10 @@ public class HttpClientRegistry implements DisposableBean {
    * A dynamically managed synchronous client: both views of the same underlying HTTP client,
    * plus the token service matching its auth configuration.
    *
-   * @deprecated since 2.6.0: Spring marks {@code RestTemplate} for removal; use
-   *     {@link ManagedRestClient} through {@link #getOrCreateRestClient} and
-   *     {@link #replaceRestClient}.
+   * <p>Since 2.6.0: Spring marks {@code RestTemplate} for removal; use {@link ManagedRestClient}
+   * through {@link #getOrCreateRestClient} and {@link #replaceRestClient}. This one stays
+   * supported.</p>
    */
-  @Deprecated(since = "2.6.0")
   public record ManagedSyncClient(RestTemplate restTemplate, RestClient restClient,
       SyncTokenService tokenService) {}
 
@@ -78,7 +77,6 @@ public class HttpClientRegistry implements DisposableBean {
    * A synchronous entry: its {@code RestClient} view, and its {@code RestTemplate} view built
    * on first ask over the same pipeline.
    */
-  @SuppressWarnings("deprecation") // keeps the RestTemplate view of the deprecated methods
   private static final class SyncClient {
 
     private final SyncClientPipeline pipeline;
@@ -158,9 +156,8 @@ public class HttpClientRegistry implements DisposableBean {
    * As {@link #getOrCreateRestClient}, with the client's {@code RestTemplate} too. Both methods
    * see the same client under a name.
    *
-   * @deprecated since 2.6.0: use {@link #getOrCreateRestClient}.
+   * <p>Recommended since 2.6.0: use {@link #getOrCreateRestClient}. This one stays supported.</p>
    */
-  @Deprecated(since = "2.6.0")
   public ManagedSyncClient getOrCreate(String name, ClientType type, ClientProperties properties) {
     return getOrCreateSync(name, type, properties).withRestTemplate();
   }
@@ -168,9 +165,8 @@ public class HttpClientRegistry implements DisposableBean {
   /**
    * As {@link #replaceRestClient}, with the client's {@code RestTemplate} too.
    *
-   * @deprecated since 2.6.0: use {@link #replaceRestClient}.
+   * <p>Recommended since 2.6.0: use {@link #replaceRestClient}. This one stays supported.</p>
    */
-  @Deprecated(since = "2.6.0")
   public ManagedSyncClient replace(String name, ClientType type, ClientProperties properties) {
     return replaceSync(name, type, properties).withRestTemplate();
   }

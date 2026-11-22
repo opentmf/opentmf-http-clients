@@ -36,7 +36,6 @@ import org.springframework.web.client.RestTemplate;
  * {@code RestTemplate} are both made from it.
  */
 @Slf4j
-@SuppressWarnings("deprecation") // implements RestTemplateFactory until it is removed
 abstract class AbstractRestTemplateFactory implements RestClientFactory, RestTemplateFactory {
 
   private final RestLogbookSupport logbookSupport;
@@ -89,10 +88,10 @@ abstract class AbstractRestTemplateFactory implements RestClientFactory, RestTem
   /**
    * {@inheritDoc}
    *
-   * @deprecated since 2.6.0: use {@link #createRestClient(String, ClientProperties)}.
+   * <p>Recommended since 2.6.0: use {@link #createRestClient(String, ClientProperties)}. This one
+   * stays supported.</p>
    */
   @Override
-  @Deprecated(since = "2.6.0")
   public RestTemplate create(String clientId, ClientProperties properties) {
     return pipeline(clientId, properties, "RestTemplate").restTemplate();
   }
@@ -113,9 +112,9 @@ abstract class AbstractRestTemplateFactory implements RestClientFactory, RestTem
   /**
    * As {@link #addContributedInterceptors(List)}, on the template's own list.
    *
-   * @deprecated since 2.6.0: use {@link #addContributedInterceptors(List)}.
+   * <p>Recommended since 2.6.0: use {@link #addContributedInterceptors(List)}. This one stays
+   * supported.</p>
    */
-  @Deprecated(since = "2.6.0")
   protected void addContributedInterceptors(RestTemplate restTemplate) {
     addContributedInterceptors(restTemplate.getInterceptors());
   }
@@ -124,9 +123,9 @@ abstract class AbstractRestTemplateFactory implements RestClientFactory, RestTem
    * Hands the application's {@link ObservationRegistry} to the {@code RestTemplate}; without a
    * registry bean the template keeps its default no-op registry.
    *
-   * @deprecated since 2.6.0: the {@link SyncClientPipeline} applies the registry to both shapes.
+   * <p>Since 2.6.0: The {@link SyncClientPipeline} applies the registry to both shapes. This one
+   * stays supported.</p>
    */
-  @Deprecated(since = "2.6.0")
   protected void applyObservationRegistry(RestTemplate restTemplate) {
     if (observationRegistry != null) {
       restTemplate.setObservationRegistry(observationRegistry);
@@ -196,10 +195,9 @@ abstract class AbstractRestTemplateFactory implements RestClientFactory, RestTem
    * As {@link #addResilienceInterceptor(List, String, ClientProperties)}, on the template's own
    * list.
    *
-   * @deprecated since 2.6.0: use {@link #addResilienceInterceptor(List, String,
-   *     ClientProperties)}.
+   * <p>Recommended since 2.6.0: use {@link #addResilienceInterceptor(List, String,
+   * ClientProperties)}. This one stays supported.</p>
    */
-  @Deprecated(since = "2.6.0")
   protected void addResilienceInterceptor(RestTemplate restTemplate, String clientId,
       ClientProperties properties) {
     addResilienceInterceptor(restTemplate.getInterceptors(), clientId, properties);
@@ -215,9 +213,9 @@ abstract class AbstractRestTemplateFactory implements RestClientFactory, RestTem
   /**
    * As {@link #addFixedHeadersInterceptor(List, ClientProperties)}, on the template's own list.
    *
-   * @deprecated since 2.6.0: use {@link #addFixedHeadersInterceptor(List, ClientProperties)}.
+   * <p>Recommended since 2.6.0: use {@link #addFixedHeadersInterceptor(List, ClientProperties)}.
+   * This one stays supported.</p>
    */
-  @Deprecated(since = "2.6.0")
   protected void addFixedHeadersInterceptor(RestTemplate restTemplate,
       ClientProperties properties) {
     addFixedHeadersInterceptor(restTemplate.getInterceptors(), properties);
@@ -226,9 +224,9 @@ abstract class AbstractRestTemplateFactory implements RestClientFactory, RestTem
   /**
    * As {@link #addLogbookInterceptor(List, ClientProperties)}, on the template's own list.
    *
-   * @deprecated since 2.6.0: use {@link #addLogbookInterceptor(List, ClientProperties)}.
+   * <p>Recommended since 2.6.0: use {@link #addLogbookInterceptor(List, ClientProperties)}. This
+   * one stays supported.</p>
    */
-  @Deprecated(since = "2.6.0")
   protected void addLogbookInterceptor(RestTemplate restTemplate, ClientProperties properties) {
     addLogbookInterceptor(restTemplate.getInterceptors(), properties);
   }
