@@ -23,6 +23,7 @@ import org.opentmf.client.rest.resilience.ResilienceClientHttpRequestInterceptor
 import org.opentmf.client.rest.service.api.OutboundInterceptorContribution;
 import org.opentmf.client.rest.service.api.SyncTokenService;
 import org.opentmf.client.rest.util.GzipClientHttpRequestInterceptor;
+import org.opentmf.client.rest.util.RefusedTokenInterceptor;
 import org.opentmf.client.starter.OpentmfHttpClientsAutoConfiguration;
 import org.opentmf.client.starter.registry.HttpClientRegistry;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -247,11 +248,13 @@ class OutboundInterceptorContributionIT {
     catalogClient("jdk").run(context -> {
       assertThat(context).hasNotFailed();
       var interceptors = ((RestTemplate) context.getBean("catalogRestTemplate")).getInterceptors();
-      // resilience, gzip, fixed headers, Logbook (behind its body-read guard)
-      assertThat(interceptors).hasSize(4);
+      // resilience, gzip, fixed headers, the bearer client's refused-token hook, then Logbook
+      // (behind its body-read guard), which stays innermost
+      assertThat(interceptors).hasSize(5);
       assertThat(interceptors.get(0)).isInstanceOf(ResilienceClientHttpRequestInterceptor.class);
       assertThat(interceptors.get(1)).isSameAs(GzipClientHttpRequestInterceptor.instance());
-      assertThat(interceptors.get(3)).isInstanceOf(BodyReadFailureGuard.class);
+      assertThat(interceptors.get(3)).isInstanceOf(RefusedTokenInterceptor.class);
+      assertThat(interceptors.get(4)).isInstanceOf(BodyReadFailureGuard.class);
 
       var restClientChain = new ArrayList<ClientHttpRequestInterceptor>();
       ((RestClient) context.getBean("catalogRestClient")).mutate()

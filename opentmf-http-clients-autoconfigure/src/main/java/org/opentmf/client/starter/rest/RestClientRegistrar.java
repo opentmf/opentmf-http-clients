@@ -99,8 +99,14 @@ public class RestClientRegistrar {
     }
     var restTemplate = rtFactory.create(clientId, properties);
     if (usesMintedTokens(properties)) {
-      // innermost: sees the answer as the API sent it; binds to the token service once it exists
-      restTemplate.getInterceptors().add(new RefusedTokenInterceptor());
+      // just inside the library's own interceptors and ahead of Logbook, which stays innermost;
+      // it reads the answer's status and headers only, and binds to the token service later
+      var interceptors = restTemplate.getInterceptors();
+      int at = interceptors.size();
+      while (at > 0 && interceptors.get(at - 1) instanceof BodyReadFailureGuard) {
+        at--;
+      }
+      interceptors.add(at, new RefusedTokenInterceptor());
     }
     return restTemplate;
   }
