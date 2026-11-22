@@ -1244,6 +1244,15 @@ The library adds no dependency for this: the observation API ships transitively 
 (micrometer-tracing's propagating handler). Token-endpoint calls propagate too, since they run
 through the same clients.
 
+**The token fetch's route name.** A token call goes to the configured `bearer-auth.token-url`,
+not to a URI template, so Spring's default convention would label it `uri=none`. Every token
+client (sync and reactive, static and dynamic) labels its `http.client.requests` observation
+`uri=token-fetch` instead (`TokenRoute.NAME`): a fixed name, never the address, so a dashboard
+tells token fetches from the client's other calls, and the `client.name` label still names the
+token host. The client's own calls keep their labels. The token clients carry the library's
+`TokenFetchObservationConvention` (Spring's default convention with that one label), so an
+application convention set on a client builder does not reach its token calls.
+
 ## Dynamic clients (`HttpClientRegistry`)
 
 The static `opentmf.http-clients.*` clients are create-once Spring beans — the right lifecycle for a fixed set of dependencies, the wrong one for clients built **programmatically at runtime** (e.g. from catalog rows that SREs change without a redeploy). For those, autowire the `HttpClientRegistry` bean:
