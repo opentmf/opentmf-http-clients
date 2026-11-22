@@ -8,6 +8,13 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
 ## [2.5.2] - 2026-11-13
 
 ### Changed
+- **A token fetch's client observation is labelled `uri=token-fetch`.** The token call goes to
+  the configured token address, not a URI template, so its `http.client.requests` metric and span
+  carried `uri=none`, and a dashboard could not tell it from the client's other untemplated calls.
+  Every token client — `jdk`, `apache` and `netty`, static and dynamic — now labels it with the
+  fixed route name `token-fetch` (`TokenRoute.NAME`), never the address. Nothing else changes: the
+  observation's name, its other labels and the client's own calls stay as they were. A dashboard
+  or alert that selected token calls by `uri="none"` selects them by `uri="token-fetch"` now.
 - **A failed token call is its own type, with the identity provider's body withheld.** An error
   status from the token endpoint (any 4xx or 5xx) surfaced as the same exception as a failure of
   the call the token was for — `OpenTmfClientResponseException`, `OpenTmfClientNotFoundException`
