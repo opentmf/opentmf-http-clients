@@ -26,6 +26,7 @@ import org.opentmf.client.rest.service.impl.NoOpSyncTokenService;
 import org.opentmf.client.rest.service.impl.SyncBasicTokenServiceImpl;
 import org.opentmf.client.rest.util.FixedHeadersClientHttpRequestInterceptor;
 import org.opentmf.client.rest.util.OpenTmfRestClientStatusHandler;
+import org.opentmf.client.rest.util.TokenFetchObservationConvention;
 import org.opentmf.client.starter.TokenFetchMeters;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -313,7 +314,9 @@ public class RestClientRegistrar {
    */
   private RestClient tokenRestClient(RestClient restClient,
       @Nullable ClientHttpRequestFactory tokenFactory, BearerAuthConfig bearerConfig) {
+    // the token address is configured, not a template: the observation's uri is the route name
     var builder = restClient.mutate()
+        .observationConvention(new TokenFetchObservationConvention())
         .requestInterceptors(interceptors -> {
           interceptors.removeIf(FixedHeadersClientHttpRequestInterceptor.class::isInstance);
           if (logbookSupport != null && !bearerConfig.isLogResponseBody()) {

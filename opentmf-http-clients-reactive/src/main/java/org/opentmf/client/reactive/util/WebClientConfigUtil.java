@@ -113,11 +113,16 @@ public final class WebClientConfigUtil {
   /**
    * As {@link #createWebClient(WebClient.Builder, HttpClient, ClientProperties)}, for the
    * client's token calls: without its {@code fixed-headers}, which never reach the token
-   * endpoint ({@code bearer-auth.headers} is the opt-in for a header the token endpoint needs).
+   * endpoint ({@code bearer-auth.headers} is the opt-in for a header the token endpoint needs),
+   * and with the {@code uri} label of its observation set to the fixed route name by
+   * {@link TokenFetchObservationConvention}.
    */
   public static WebClient createTokenWebClient(WebClient.Builder webClientBuilder,
       HttpClient httpClient, ClientProperties clientProperties) {
-    return createWebClient(webClientBuilder, httpClient, clientProperties, Map.of());
+    // the token address is configured, not a template: the observation's uri is the route name
+    return createWebClient(
+        webClientBuilder.clone().observationConvention(new TokenFetchObservationConvention()),
+        httpClient, clientProperties, Map.of());
   }
 
   private static WebClient createWebClient(WebClient.Builder webClientBuilder,

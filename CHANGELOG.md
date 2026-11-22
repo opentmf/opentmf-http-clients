@@ -124,6 +124,13 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   token request runs on, for code that wires the token clients by hand.
 
 ### Changed
+- **A token fetch's client observation is labelled `uri=token-fetch`.** The token call goes to
+  the configured token address, not a URI template, so its `http.client.requests` metric and span
+  carried `uri=none`, and a dashboard could not tell it from the client's other untemplated calls.
+  Every token client — `jdk`, `apache` and `netty`, static and dynamic — now labels it with the
+  fixed route name `token-fetch` (`TokenRoute.NAME`), never the address. Nothing else changes: the
+  observation's name, its other labels and the client's own calls stay as they were. A dashboard
+  or alert that selected token calls by `uri="none"` selects them by `uri="token-fetch"` now.
 - **The `RestClient` is built from the client's parts, no longer from its `RestTemplate`.** The
   library builds each synchronous client's parts once — the HTTP client with its mTLS, pool and
   time limits, the interceptors in their order, the observation registry, the base URL and the
