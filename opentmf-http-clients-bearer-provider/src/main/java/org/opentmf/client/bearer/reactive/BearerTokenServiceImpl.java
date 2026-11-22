@@ -16,6 +16,7 @@ import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.opentmf.client.bearer.model.TokenEntry;
 import org.opentmf.client.bearer.util.BearerTokenUtil;
+import org.opentmf.client.bearer.util.TokenCacheUtil;
 import org.opentmf.client.bearer.util.TokenMints;
 import org.opentmf.client.common.model.BearerAuthConfig;
 import reactor.core.publisher.Mono;
@@ -87,6 +88,11 @@ public class BearerTokenServiceImpl implements BearerTokenService {
   public void clearCache() {
     tokenCache.invalidateAll();
     mints.forget();
+  }
+
+  @Override
+  public void dropRefusedToken(String token) {
+    TokenCacheUtil.dropToken(tokenCache, token, config.getTokenField());
   }
 
   private Mono<String> getToken(URI uri, String additionalScopes, Map<String, String> enricher) {

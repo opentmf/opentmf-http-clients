@@ -27,6 +27,13 @@ how far should it go?
 >
 > Shipped in 2.1.6 — see the CHANGELOG entry for what landed, and the
 > "Retry Behavior" section of the README for the resulting contract.
+>
+> **Decided later (2026-11-22): `WWW-Authenticate` on an API's `401`, narrower than §4.2.**
+> A `401` whose Bearer challenge says `error="invalid_token"` drops the refused token from the
+> client's cache, so the next token request mints a fresh one. The refused call itself fails as
+> before: there is **no** refresh-and-replay inside the library. A `401` without the marker
+> (including a bare `Bearer` challenge, which §4.2 would have treated as `invalid_token`) and a
+> `403` drop nothing. See "A token refused as invalid" in the README.
 
 ---
 
