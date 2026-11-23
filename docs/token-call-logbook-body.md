@@ -12,7 +12,7 @@ line.
 - **2.5.1, released:** a scratch Maven project on the released `opentmf-http-clients-starter-rest`
   / `-starter-reactive` 2.5.1 jars, with `logbook-spring-boot-autoconfigure` 4.2.0 defaults and
   `org.zalando.logbook` at TRACE.
-- **2.5.2:** `TokenCallLogbookIT` on the branch.
+- **2.6.0:** `TokenCallLogbookIT` on the branch.
 - **Clients:** `jdk`, `apache` and `netty`.
 - **Identity provider:** a stand-in whose own logging was off, answering a `400` and a `200`
   that both echo `client_secret`.
@@ -33,7 +33,7 @@ line.
 {"origin":"remote","type":"response","correlation":"fb7275ba0f3780f4","duration":14,"protocol":"HTTP/1.1","status":200,"headers":{"connection":["keep-alive"],"content-length":["72"],"content-type":["application/json"],"retry-after":["1"],"x-probe":["kept"]},"body":{"access_token":"XXX","expires_in":3600,"client_secret":"ECHOED-SECRET"}}
 ```
 
-## 2.5.2: the marker stands in for the body
+## 2.6.0: the marker stands in for the body
 
 `400`:
 
@@ -63,4 +63,4 @@ filter masks it:
 - **Debugging:** `bearer-auth.log-response-body: true` restores the 2.5.1 line for the token
   calls; the IT asserts the echo is present then.
 - **Without Logbook:** the library's own log lines carry neither the body nor its
-  `error_description`, on 2.5.1 or on 2.5.2.
+  `error_description`, on 2.5.1 or on 2.6.0.

@@ -399,10 +399,27 @@ For each entry in the `http-clients` map with key `clientId`, the registered bea
 |---|---|
 | `{clientId}ClientProperties` | `ClientProperties` |
 | `{clientId}RestClient` | `RestClient` (recommended) |
-| `{clientId}RestTemplate` | `RestTemplate` (deprecated in Spring Framework 7) |
+| `{clientId}RestTemplate` | `RestTemplate` (supported; Spring Framework 7.1 marks it for removal) |
 | `{clientId}TokenService` | `SyncTokenService` |
 
 Both a `RestClient` and a `RestTemplate` bean are registered for each REST client. The `RestClient` is the recommended choice for new code — it provides a modern fluent API, works naturally with virtual threads (Java 21+), and is the official replacement for `RestTemplate` in Spring Framework 7+.
+
+Since 2.6.0 the library builds each client's parts once — the HTTP client with its mTLS, pool and time limits, the interceptors in their order, the observation registry, the base URL and the error handling — and makes the `RestClient` from them directly, no longer from the `RestTemplate`. The `RestTemplate` bean is made from the same parts, so both share one connection pool and behave the same.
+
+#### Moving off `RestTemplate` (since 2.6.0)
+
+Spring Framework 7.1 marks `RestTemplate` and its `ResponseErrorHandler` for removal. The library keeps every `RestTemplate` type and method supported and working unchanged; they are not marked deprecated, and an application that keeps using them changes nothing. `RestClientFactory` and the `RestClient` entry points are the recommended ones; the Javadoc of each older entry point names its newer one. To move:
+
+| Instead of | Use |
+|---|---|
+| the `{clientId}RestTemplate` bean | the `{clientId}RestClient` bean |
+| `RestTemplateFactory` (e.g. as a `@ConditionalOnBean` marker) | `RestClientFactory`; the JDK and Apache backends implement both |
+| `RestTemplateFactory.create(id, properties)` | `RestClientFactory.createRestClient(id, properties)` |
+| `HttpClientRegistry.getOrCreate` / `replace` (`ManagedSyncClient`) | `getOrCreateRestClient` / `replaceRestClient` (`ManagedRestClient`) |
+| `RestClientRegistrar.createRestTemplate` / `createRestClient(restTemplate, …)` | `createRestClient(id, type, properties)` or `createPipeline(id, type, properties)` |
+| `new OpenTmfResponseErrorHandler(properties)` | `OpenTmfRestClientStatusHandler.errorHandler(properties)` |
+
+The exceptions stay the same (`OpenTmfClientResponseException`, `OpenTmfClientNotFoundException` for 404), and so does `SyncClientUtil`, so no `catch` block changes.
 
 A single client produces **either** reactive beans **or** REST beans, never both. If you need both a `WebClient` and a `RestClient` for the same backend, declare two clients with different IDs (e.g. one with `client-type: netty` and one with `client-type: jdk`).
 
@@ -419,7 +436,7 @@ Independent of the per-client beans, the starter registers these singletons:
 | `opentmfTokenFetchMeters` | `TokenFetchMeters` | Micrometer + a `MeterRegistry` bean — see [Token fetch](#token-fetch-transport-retry-typed-failure-metrics) |
 
 "A `MeterRegistry` bean" includes the one Boot's metrics auto-configuration makes (actuator or
-`spring-boot-micrometer-metrics`): the starter's auto-configuration runs after it. Before 2.5.2
+`spring-boot-micrometer-metrics`): the starter's auto-configuration runs after it. Before 2.6.0
 it did not, and only a registry the application declared itself was seen.
 
 You normally only autowire `HttpClientRegistry` (for dynamic clients); the others work behind the scenes — `ResilienceRegistries` is useful in tests or when you need direct access to a client's `CircuitBreaker`/`Bulkhead` instances.
@@ -437,7 +454,7 @@ public class MyCatalogService {
   private final TokenService reactiveApiTokenService;
 
   private final RestClient syncApiRestClient;     // recommended
-  private final RestTemplate syncApiRestTemplate;  // deprecated
+  private final RestTemplate syncApiRestTemplate;  // supported
   private final SyncTokenService syncApiTokenService;
   // ...
 }
@@ -528,7 +545,7 @@ public class CatalogService {
 }
 ```
 
-#### RestTemplate (JDK or Apache) — deprecated
+#### RestTemplate (JDK or Apache) — supported, `RestClient` recommended
 
 `RestTemplate` is mutable — add interceptors or message converters directly:
 
@@ -567,13 +584,13 @@ public class OutboundInterceptorConfig {
 }
 ```
 
-**Where it applies.** The library adds the contributions while it builds a client, before the `RestClient` copies the `RestTemplate`'s interceptor list. So they reach:
+**Where it applies.** The library adds the contributions while it builds a client's interceptor list, which the `RestClient` and the `RestTemplate` both use. So they reach:
 
 | Covered | Not covered |
 |---|---|
 | `{clientId}RestTemplate` and `{clientId}RestClient` (`jdk` and `apache`) | `{clientId}WebClient` (`netty`) and its token calls |
 | the token calls of `{clientId}TokenService` (they run through the `RestClient`) | clients you build yourself (see [Replacing a client entirely](#replacing-a-client-entirely)) |
-| sync clients built at runtime through [`HttpClientRegistry`](#dynamic-clients-httpclientregistry) | |
+| sync clients built at runtime through [`HttpClientRegistry`](#dynamic-clients-httpclientregistry) or `RestClientFactory` | |
 
 The library applies every contribution to every covered client. An interceptor that is meant for some clients only decides that itself, for example from `request.getURI()`.
 
@@ -743,13 +760,13 @@ single transport retry. `num-retries: 0` turns the status retry off. When wiring
 `SyncTokenClientImpl` by hand, pass the `ClientProperties` to get it — the constructors without
 them keep the transport retry only.
 
-### A failed token call since 2.5.2: what changes for users of 2.5.1
+### A failed token call since 2.6.0: what changes for users of 2.5.1
 
-Measured on the released 2.5.1 jars and on 2.5.2, with the same cells: a client of each type
+Measured on the released 2.5.1 jars and on 2.6.0, with the same cells: a client of each type
 (`jdk`, `apache`, `netty`) whose token endpoint answers `400`, `404`, `410` or `503` with a JSON
 body holding `error`, `error_description` and an echo of a credential.
 
-| | 2.5.1 (released) | 2.5.2 |
+| | 2.5.1 (released) | 2.6.0 |
 |---|---|---|
 | type, `400` / `410` / `503` | `OpenTmfClientResponseException` | `BearerTokenException` (an `OpenTmfClientResponseException`) |
 | type, `404` | `OpenTmfClientNotFoundException` | `BearerTokenException` — **no longer** an `OpenTmfClientNotFoundException` |
@@ -768,7 +785,7 @@ What to check when upgrading:
   Code that maps a `404` by its *status* (`getRawStatusCode() == 404`) still sees `404`; catch
   `BearerTokenException` ahead of it.
 - **A catch of `BearerTokenException`** now fires for every error status from the token
-  endpoint, on every client type; until 2.5.2 a failed token call raised it only on a reactive
+  endpoint, on every client type; until 2.6.0 a failed token call raised it only on a reactive
   token client built by hand over a `WebClient` without the library's error filter (there its
   message held the whole body; now it is the message above).
 - **Every token call that got an answer and failed is one of two types**, both
@@ -865,11 +882,11 @@ an identity provider that does not answer holds a mint for about twice
 **Why a cache alone does not stop the repeat.** A token is cached only once its call succeeded,
 and finding it, calling for it and storing it are three steps: every caller that finds no token
 calls. That happens on a cold cache, every time a cached token expires under load, and all the
-while an identity provider is failing, when nothing is ever stored. Until 2.5.2 each of those
+while an identity provider is failing, when nothing is ever stored. Until 2.6.0 each of those
 callers made its own token call, with its own retries. Measured at a stand-in token endpoint, K
 concurrent callers of one key, sync and reactive alike:
 
-| Case | Token calls until 2.5.1, K = 1 / 8 / 32 | Since 2.5.2 |
+| Case | Token calls until 2.5.1, K = 1 / 8 / 32 | Since 2.6.0 |
 |---|---|---|
 | Outage: the token endpoint answers `503` (default `num-retries: 3`) | 4 / 32 / 128 | 4 / 4 / 4 |
 | Outage: the connection fails (one transport retry) | 2 / 16 / 64 | 2 / 2 / 2 |
@@ -935,7 +952,7 @@ then every token request for the same key (token URL, scope and username) fails 
 refusal (its own copy of the `BearerTokenException`), without a call. Another key of the same
 client, and every other client, still calls. It is independent of `failure-memory`; either, both
 or neither may be set. The logs and the token counter are as for `failure-memory`, and
-`clearCache()` forgets it, as does `HttpClientRegistry.replace`, which builds a new token service.
+`clearCache()` forgets it, as does `HttpClientRegistry.replaceRestClient` (or `replace`), which builds a new token service.
 The cost: once the secret is fixed, the next token can come up to `refusal-memory` late, so keep it
 short:
 
@@ -1294,12 +1311,12 @@ The static `opentmf.http-clients.*` clients are create-once Spring beans — the
 @Autowired HttpClientRegistry registry;
 
 // build (or fetch) a client for a source row
-var client = registry.getOrCreate("onedms", ClientType.APACHE, props);
+var client = registry.getOrCreateRestClient("onedms", ClientType.APACHE, props);
 client.restClient().get().uri("/things").retrieve().body(String.class);
 client.tokenService().getToken();          // matches the row's auth config
 
 // the row changed → hot-swap; the old client closes after a 30s grace period
-registry.replace("onedms", ClientType.APACHE, newProps);
+registry.replaceRestClient("onedms", ClientType.APACHE, newProps);
 
 // the row was deleted
 registry.evict("onedms");
@@ -1309,10 +1326,12 @@ var reactive = registry.getOrCreateReactive("asgw", props);
 reactive.webClient(); reactive.tokenService();
 ```
 
+`getOrCreate` and `replace` (supported; `getOrCreateRestClient` and `replaceRestClient` are recommended since 2.6.0) return the same client with its `RestTemplate` as well (`ManagedSyncClient`); under one name both pairs of methods see the same client.
+
 Semantics:
 
-- **Grace-period close** — `replace`/`evict` never yank a client out from under in-flight requests: the retired client closes 30 seconds later. Closing is per-type: Apache closes its pooled connection manager gracefully; JDK uses a guarded `AutoCloseable` close (real close on Java 21+ runtimes, GC-reclaimed no-op on 17); Netty disposes the client's (and its token client's) `ConnectionProvider` gracefully.
-- **Resilience reset** — `replace`/`evict` also reset the name's resilience4j instances, so a re-created client starts with breaker state and configuration built from its current properties.
+- **Grace-period close** — `replaceRestClient`/`replace`/`evict` never yank a client out from under in-flight requests: the retired client closes 30 seconds later. Closing is per-type: Apache closes its pooled connection manager gracefully; JDK uses a guarded `AutoCloseable` close (real close on Java 21+ runtimes, GC-reclaimed no-op on 17); Netty disposes the client's (and its token client's) `ConnectionProvider` gracefully.
+- **Resilience reset** — `replaceRestClient`/`replace`/`evict` also reset the name's resilience4j instances, so a re-created client starts with breaker state and configuration built from its current properties.
 - **Pool gauges** — with a `MeterRegistry` bean, every Apache client (static or dynamic) exposes `opentmf.client.pool.leased|available|pending|max{client=<name>}`; `evict` removes the gauges. Bearer clients of any type also count their mints on `opentmf.client.token.fetch{client=<name>,outcome}`.
 - Prefer `client-type: apache` for dynamic sources: real pool control and pool metrics. On the JDK type, `max-connections` is unenforceable (see below).
 

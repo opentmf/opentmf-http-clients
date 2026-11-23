@@ -96,7 +96,7 @@ public class ReactiveClientRegistrar {
    * from its cache; the refused call fails as before and is not retried. Does nothing unless the
    * client was built by {@link #createWebClient} for bearer authentication.
    *
-   * @since 2.5.2
+   * @since 2.6.0
    */
   public void bindRefusedTokens(WebClient webClient, TokenService tokenService) {
     if (tokenService instanceof BearerTokenService bearer) {

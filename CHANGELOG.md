@@ -5,122 +5,19 @@ All notable changes to this project will be documented in this file.
 This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients) (v1x).
 For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-v1x) section in the README.
 
-## [2.5.2] - 2026-11-13
-
-### Changed
-- **A token an API refuses as invalid is dropped from the cache.** A cached bearer token was
-  dropped only when its cache time ran out, so a client kept sending a token an API had refused
-  (signing keys rotated, the token revoked, the host suspended while the token's lifetime ran on)
-  until then. Now an API's `401` with `WWW-Authenticate: Bearer error="invalid_token"` on a call of
-  a bearer client drops that token, and the next `getToken()` mints a fresh one: `jdk`, `apache`
-  and `netty`, static and dynamic clients. The refused call fails exactly as before and is **not**
-  retried. A `401` without the marker, a `403` and a refusal of a token the client never minted
-  drop nothing. New: `dropRefusedToken(String)` on `SyncBearerTokenService` and
-  `BearerTokenService` (a default method that does nothing), `InvalidTokenRefusals`,
-  `RefusedTokenInterceptor`, `RefusedTokenFilter`, `ReactiveClientRegistrar.bindRefusedTokens`.
-- **A token fetch's client observation is labelled `uri=token-fetch`.** The token call goes to
-  the configured token address, not a URI template, so its `http.client.requests` metric and span
-  carried `uri=none`, and a dashboard could not tell it from the client's other untemplated calls.
-  Every token client — `jdk`, `apache` and `netty`, static and dynamic — now labels it with the
-  fixed route name `token-fetch` (`TokenRoute.NAME`), never the address. Nothing else changes: the
-  observation's name, its other labels and the client's own calls stay as they were. A dashboard
-  or alert that selected token calls by `uri="none"` selects them by `uri="token-fetch"` now.
-- **A failed token call is its own type, with the identity provider's body withheld.** An error
-  status from the token endpoint (any 4xx or 5xx) surfaced as the same exception as a failure of
-  the call the token was for — `OpenTmfClientResponseException`, `OpenTmfClientNotFoundException`
-  for a `404` — with the identity provider's whole body in `getResponseBody()`, so a consumer could
-  not tell a token endpoint's `400`, `404` or `410` from the answer of the service it called, and a
-  provider that echoes the request form put a credential into the exception. It now throws
-  `BearerTokenException`, on every client type (`jdk`, `apache`, `netty`), static and dynamic
-  clients alike. **Compatibility, measured on the released 2.5.1 jars against 2.5.2 (each client
-  type, the token endpoint answering `400`, `404`, `410` and `503`):**
-  - a catch of `OpenTmfClientResponseException` catches it as before (`BearerTokenException` is
-    one); status, response headers, `Retry-After` and the number of token requests (a `503`
-    1 + `num-retries`, others 1) are unchanged;
-  - `getResponseBody()` is `null` (2.5.1: the whole body, the echo included), and the message is
-    `Bearer token request to <token-url> answered 400 Bad Request (error=invalid_client)`
-    (2.5.1: `HTTP 400 Bad Request: <error_description>`); `getOauthError()` gives the RFC 6749
-    error code;
-  - a token endpoint's `404` is a `BearerTokenException` and **no longer an
-    `OpenTmfClientNotFoundException`** (2.5.1: it was): a wrong token URL, not an absent resource.
-
-  Every token call that got an answer and failed is now one of two sibling types, both
-  `OpenTmfClientResponseException`s: `BearerTokenException` (an error status) and the unchanged
-  `BearerTokenResponseException` (a success status without a usable token); a consumer that tells
-  them from the target's answer names both. See the README's "A failed token call since 2.5.2".
-- **A client with `bearer-auth` but no `bearer-auth.token-url` is refused when it is built**, by
-  name (`Client '<id>' has bearer-auth but no bearer-auth.token-url. …`), at context start and in
-  the dynamic-client registry, whether or not a bean validator is on the classpath. A
-  `bearer-auth` block is bound as soon as any of its keys is set, so a sub-key alone made a bearer
-  client; with a bean validator it already failed at start, without one it failed at its first
-  token call with a `NullPointerException` (measured on 2.5.1). `bearer-auth.use-mock: true`
-  needs no token URL, as before.
-- **A `bearer-auth.token-url` that is not an absolute `http` or `https` URL with a host is
-  refused when the client is built**, by name and without quoting the URL (`Client '<id>' has a
-  bearer-auth.token-url that is not an absolute http or https URL with a host.`): a misspelt
-  scheme, a space in the host, an empty host. Measured on 2.5.1: such a client started and
-  failed at its first token call, with an untyped `IllegalArgumentException` on `jdk` and a
-  `BearerTokenTransportException` after a second attempt on `apache` and `netty`.
-- **A user part, a query or a fragment of the token URL is no longer shown.**
-  `http://user:password@idp/token` and `https://idp/token?p=policy` are accepted and work as
-  before (on `jdk` and `netty` the user part is never sent; `apache` refuses it at the call, as
-  before; a query is sent as configured), but the log lines of the token calls (`INFO` minted,
-  `DEBUG` before a fetch, transport `WARN`), the messages and `getTokenUrl()` of
-  `BearerTokenException`, `BearerTokenResponseException` and `BearerTokenTransportException`, and
-  the URL handed to a `TokenFetchListener` show the URL as its scheme, host, port and path only.
-  Measured on 2.5.1: the `INFO` line of every mint printed the whole URL, and `getTokenUrl()`
-  returned it; code that read `getTokenUrl()` or the listener's URL as the configured URL now gets
-  it without those parts. With such a URL a `BearerTokenTransportException` chains no cause,
-  since the HTTP client's own exceptions quote the URL with them; its message keeps the cause
-  chain (class names and texts) without them. Logbook's line of a token call keeps the query,
-  filtered by the application's `logbook.obfuscate.parameters` (README).
-- **`WebClientUtil.handleError` logs the request's path only** in its `DEBUG` line (it logged the
-  whole URL, a user part and a query included). The library itself does not call it.
-
-- **Logbook logs a token call without the token endpoint's response body.** With Logbook on the
-  classpath and `logging-enabled` (the default), the TRACE line of a token call showed the
-  identity provider's whole answer through Logbook's own body filters, which mask the tokens of a
-  JSON answer but not, say, an echoed `client_secret`. A marker,
-  `<token response body withheld; bearer-auth.log-response-body: true logs it>`, now stands in
-  its place; nothing else of the line changes (the request with Logbook's own masking, the status,
-  the headers), and the client's own calls keep their bodies. **Measured on the released 2.5.1
-  jars against 2.5.2**, on all three client types, an identity provider echoing `client_secret` in
-  a `400` and in a `200`: on 2.5.1 the echo is in the TRACE line, on 2.5.2 it is not. Scoped to the
-  token calls; it neither relies on nor changes the application's Logbook configuration.
-- **Documented: what `response-timeout` bounds on each client type**, which no earlier release
-  said correctly (the Javadoc called it a read timeout on all client types). The behaviour itself
-  is unchanged. On `jdk` it is one deadline for the whole exchange, counted from the send, so a
-  body that is still arriving when it passes is cut, a long download included. On `apache` and
-  `netty` it is silence per read, so a stalled body is cut but a body that keeps arriving is
-  never cut. The README says what the caller sees when a body is cut, and how a caller bounds a
-  whole call; `ResponseTimeoutIT` measures both a stalled and a trickling peer on every client
-  type. It also names a trap the measurement found: on `netty` a cut body arrives as a
-  `WebClientResponseException` carrying the answer's own `200`, so tell it from an error answer by
-  its cause, not by its type.
-- **Concurrent callers of one token key make one token call, not one each.** A bearer token was
-  cached only once its call succeeded, and the lookup, the call and the store were separate steps:
-  every caller that found no token, on a cold cache, when the cached token expired under load or
-  while the identity provider was failing, made a token call of its own, with its own retries.
-  Measured at a stand-in token endpoint with K = 1 / 8 / 32 concurrent callers, sync and reactive
-  alike: a `503` outage cost 4 / 32 / 128 calls, a transport outage 2 / 16 / 64, a recovery on an
-  empty cache 1 / 8 / 32, a normal expiry under load 1 / 8 / 32. Now a caller that finds no cached
-  token while a mint of its key (token URL, scope, username) is in flight waits for that mint and
-  shares its outcome: one mint, whatever K (4, 2, 1 and 1 calls). A failure is shared only by the
-  callers waiting for that mint; the next caller mints again, unless `bearer-auth.failure-memory`
-  is set. **What a caller sees change:** the token counter (`opentmf.client.token.fetch`) and the
-  `Bearer token minted` line count once per burst of callers, not once per caller (still once per
-  mint, as documented); the mint runs on the thread, and in the trace, of the caller that started
-  it, so a waiting caller's own trace holds no token call, only the wait inside its own call; a
-  waiting caller that fails gets its own copy of the failure (same type, message, status, headers
-  and cause, its own stack trace); a reactive caller that cancels stops waiting, and the mint
-  finishes and is cached for the next caller. A single caller sees no change (the compatibility
-  report in `docs/token-single-flight-compatibility.md`). See the README's "Concurrent callers and
-  a failing identity provider".
-- **The token call's status retries are jittered:** each wait is the backoff spread at random by
-  up to half of it either way, so the token calls of callers, keys and pods that failed together
-  do not retry together. The number of retries and the `Retry-After` handling are unchanged.
+## [2.6.0] - 2026-11-21
 
 ### Added
+- **`RestClientFactory`, beside `RestTemplateFactory`.** Spring Framework 7.1 marks
+  `RestTemplate` and its `ResponseErrorHandler` for removal, so an application needs a way to
+  build and detect the library's synchronous clients without either. The JDK and Apache backends
+  now implement `RestClientFactory` (`createRestClient(clientId, properties)`) as well as
+  `RestTemplateFactory`; an application can use it as its `@ConditionalOnBean` marker in place of
+  `RestTemplateFactory`. `HttpClientRegistry` gains `getOrCreateRestClient` and
+  `replaceRestClient`, which return a `ManagedRestClient` (the `RestClient` and the token
+  service, no `RestTemplate`); under one name they see the same client as `getOrCreate` and
+  `replace`. `RestClientRegistrar` gains `createRestClient(clientId, type, properties)`,
+  `createPipeline(clientId, type, properties)` and `createTokenService(clientId, pipeline)`.
 - **New meter series on a service whose `MeterRegistry` comes from Boot's metrics
   auto-configuration:** `opentmf.client.token.fetch`, `opentmf.client.pool.leased|available|
   pending|max` and the `resilience4j.circuitbreaker.*`/`resilience4j.bulkhead.*` meters of the
@@ -225,6 +122,136 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   `bearer-auth.response-timeout` with them fails by name.
 - `TokenCallProperties.of(ClientProperties)` (`opentmf-http-clients-common`): the settings a
   token request runs on, for code that wires the token clients by hand.
+
+### Changed
+- **A token an API refuses as invalid is dropped from the cache.** A cached bearer token was
+  dropped only when its cache time ran out, so a client kept sending a token an API had refused
+  (signing keys rotated, the token revoked, the host suspended while the token's lifetime ran on)
+  until then. Now an API's `401` with `WWW-Authenticate: Bearer error="invalid_token"` on a call of
+  a bearer client drops that token, and the next `getToken()` mints a fresh one: `jdk`, `apache`
+  and `netty`, static and dynamic clients. The refused call fails exactly as before and is **not**
+  retried. A `401` without the marker, a `403` and a refusal of a token the client never minted
+  drop nothing. New: `dropRefusedToken(String)` on `SyncBearerTokenService` and
+  `BearerTokenService` (a default method that does nothing), `InvalidTokenRefusals`,
+  `RefusedTokenInterceptor`, `RefusedTokenFilter`, `ReactiveClientRegistrar.bindRefusedTokens`.
+- **A token fetch's client observation is labelled `uri=token-fetch`.** The token call goes to
+  the configured token address, not a URI template, so its `http.client.requests` metric and span
+  carried `uri=none`, and a dashboard could not tell it from the client's other untemplated calls.
+  Every token client — `jdk`, `apache` and `netty`, static and dynamic — now labels it with the
+  fixed route name `token-fetch` (`TokenRoute.NAME`), never the address. Nothing else changes: the
+  observation's name, its other labels and the client's own calls stay as they were. A dashboard
+  or alert that selected token calls by `uri="none"` selects them by `uri="token-fetch"` now.
+- **The `RestClient` is built from the client's parts, no longer from its `RestTemplate`.** The
+  library builds each synchronous client's parts once — the HTTP client with its mTLS, pool and
+  time limits, the interceptors in their order, the observation registry, the base URL and the
+  error handling — and makes the `{clientId}RestClient` from them directly; the
+  `{clientId}RestTemplate` is made from the same parts. Both beans are still registered, share
+  one connection pool, and behave as before: the same interceptors in the same order, the same
+  Logbook output, the same circuit breaker, the same mTLS and proxy, the same `traceparent`, the
+  same exceptions.
+- **A failed token call is its own type, with the identity provider's body withheld.** An error
+  status from the token endpoint (any 4xx or 5xx) surfaced as the same exception as a failure of
+  the call the token was for — `OpenTmfClientResponseException`, `OpenTmfClientNotFoundException`
+  for a `404` — with the identity provider's whole body in `getResponseBody()`, so a consumer could
+  not tell a token endpoint's `400`, `404` or `410` from the answer of the service it called, and a
+  provider that echoes the request form put a credential into the exception. It now throws
+  `BearerTokenException`, on every client type (`jdk`, `apache`, `netty`), static and dynamic
+  clients alike. **Compatibility, measured on the released 2.5.1 jars against 2.6.0 (each client
+  type, the token endpoint answering `400`, `404`, `410` and `503`):**
+  - a catch of `OpenTmfClientResponseException` catches it as before (`BearerTokenException` is
+    one); status, response headers, `Retry-After` and the number of token requests (a `503`
+    1 + `num-retries`, others 1) are unchanged;
+  - `getResponseBody()` is `null` (2.5.1: the whole body, the echo included), and the message is
+    `Bearer token request to <token-url> answered 400 Bad Request (error=invalid_client)`
+    (2.5.1: `HTTP 400 Bad Request: <error_description>`); `getOauthError()` gives the RFC 6749
+    error code;
+  - a token endpoint's `404` is a `BearerTokenException` and **no longer an
+    `OpenTmfClientNotFoundException`** (2.5.1: it was): a wrong token URL, not an absent resource.
+
+  Every token call that got an answer and failed is now one of two sibling types, both
+  `OpenTmfClientResponseException`s: `BearerTokenException` (an error status) and the unchanged
+  `BearerTokenResponseException` (a success status without a usable token); a consumer that tells
+  them from the target's answer names both. See the README's "A failed token call since 2.6.0".
+- **A client with `bearer-auth` but no `bearer-auth.token-url` is refused when it is built**, by
+  name (`Client '<id>' has bearer-auth but no bearer-auth.token-url. …`), at context start and in
+  the dynamic-client registry, whether or not a bean validator is on the classpath. A
+  `bearer-auth` block is bound as soon as any of its keys is set, so a sub-key alone made a bearer
+  client; with a bean validator it already failed at start, without one it failed at its first
+  token call with a `NullPointerException` (measured on 2.5.1). `bearer-auth.use-mock: true`
+  needs no token URL, as before.
+- **A `bearer-auth.token-url` that is not an absolute `http` or `https` URL with a host is
+  refused when the client is built**, by name and without quoting the URL (`Client '<id>' has a
+  bearer-auth.token-url that is not an absolute http or https URL with a host.`): a misspelt
+  scheme, a space in the host, an empty host. Measured on 2.5.1: such a client started and
+  failed at its first token call, with an untyped `IllegalArgumentException` on `jdk` and a
+  `BearerTokenTransportException` after a second attempt on `apache` and `netty`.
+- **A user part, a query or a fragment of the token URL is no longer shown.**
+  `http://user:password@idp/token` and `https://idp/token?p=policy` are accepted and work as
+  before (on `jdk` and `netty` the user part is never sent; `apache` refuses it at the call, as
+  before; a query is sent as configured), but the log lines of the token calls (`INFO` minted,
+  `DEBUG` before a fetch, transport `WARN`), the messages and `getTokenUrl()` of
+  `BearerTokenException`, `BearerTokenResponseException` and `BearerTokenTransportException`, and
+  the URL handed to a `TokenFetchListener` show the URL as its scheme, host, port and path only.
+  Measured on 2.5.1: the `INFO` line of every mint printed the whole URL, and `getTokenUrl()`
+  returned it; code that read `getTokenUrl()` or the listener's URL as the configured URL now gets
+  it without those parts. With such a URL a `BearerTokenTransportException` chains no cause,
+  since the HTTP client's own exceptions quote the URL with them; its message keeps the cause
+  chain (class names and texts) without them. Logbook's line of a token call keeps the query,
+  filtered by the application's `logbook.obfuscate.parameters` (README).
+- **`WebClientUtil.handleError` logs the request's path only** in its `DEBUG` line (it logged the
+  whole URL, a user part and a query included). The library itself does not call it.
+
+- **Logbook logs a token call without the token endpoint's response body.** With Logbook on the
+  classpath and `logging-enabled` (the default), the TRACE line of a token call showed the
+  identity provider's whole answer through Logbook's own body filters, which mask the tokens of a
+  JSON answer but not, say, an echoed `client_secret`. A marker,
+  `<token response body withheld; bearer-auth.log-response-body: true logs it>`, now stands in
+  its place; nothing else of the line changes (the request with Logbook's own masking, the status,
+  the headers), and the client's own calls keep their bodies. **Measured on the released 2.5.1
+  jars against 2.6.0**, on all three client types, an identity provider echoing `client_secret` in
+  a `400` and in a `200`: on 2.5.1 the echo is in the TRACE line, on 2.6.0 it is not. Scoped to the
+  token calls; it neither relies on nor changes the application's Logbook configuration.
+- **Documented: what `response-timeout` bounds on each client type**, which no earlier release
+  said correctly (the Javadoc called it a read timeout on all client types). The behaviour itself
+  is unchanged. On `jdk` it is one deadline for the whole exchange, counted from the send, so a
+  body that is still arriving when it passes is cut, a long download included. On `apache` and
+  `netty` it is silence per read, so a stalled body is cut but a body that keeps arriving is
+  never cut. The README says what the caller sees when a body is cut, and how a caller bounds a
+  whole call; `ResponseTimeoutIT` measures both a stalled and a trickling peer on every client
+  type. It also names a trap the measurement found: on `netty` a cut body arrives as a
+  `WebClientResponseException` carrying the answer's own `200`, so tell it from an error answer by
+  its cause, not by its type.
+- **Concurrent callers of one token key make one token call, not one each.** A bearer token was
+  cached only once its call succeeded, and the lookup, the call and the store were separate steps:
+  every caller that found no token, on a cold cache, when the cached token expired under load or
+  while the identity provider was failing, made a token call of its own, with its own retries.
+  Measured at a stand-in token endpoint with K = 1 / 8 / 32 concurrent callers, sync and reactive
+  alike: a `503` outage cost 4 / 32 / 128 calls, a transport outage 2 / 16 / 64, a recovery on an
+  empty cache 1 / 8 / 32, a normal expiry under load 1 / 8 / 32. Now a caller that finds no cached
+  token while a mint of its key (token URL, scope, username) is in flight waits for that mint and
+  shares its outcome: one mint, whatever K (4, 2, 1 and 1 calls). A failure is shared only by the
+  callers waiting for that mint; the next caller mints again, unless `bearer-auth.failure-memory`
+  is set. **What a caller sees change:** the token counter (`opentmf.client.token.fetch`) and the
+  `Bearer token minted` line count once per burst of callers, not once per caller (still once per
+  mint, as documented); the mint runs on the thread, and in the trace, of the caller that started
+  it, so a waiting caller's own trace holds no token call, only the wait inside its own call; a
+  waiting caller that fails gets its own copy of the failure (same type, message, status, headers
+  and cause, its own stack trace); a reactive caller that cancels stops waiting, and the mint
+  finishes and is cached for the next caller. A single caller sees no change (the compatibility
+  report in `docs/token-single-flight-compatibility.md`). See the README's "Concurrent callers and
+  a failing identity provider".
+- **The token call's status retries are jittered:** each wait is the backoff spread at random by
+  up to half of it either way, so the token calls of callers, keys and pods that failed together
+  do not retry together. The number of retries and the `Retry-After` handling are unchanged.
+
+- **The `RestTemplate` entry points stay supported; `RestClientFactory` is the recommended one.**
+  Spring Framework 7.1 marks `RestTemplate` for removal. The library's `RestTemplate` types and
+  methods — `RestTemplateFactory`, `OpenTmfResponseErrorHandler`,
+  `HttpClientRegistry.ManagedSyncClient` with `getOrCreate` and `replace`, the `RestTemplate`
+  methods of `RestClientRegistrar` and `RestLogbookSupport`, and the backends' protected helpers
+  taking a `RestTemplate` — are not marked deprecated and keep working unchanged; their Javadoc
+  names the newer entry point. An application that keeps using `RestTemplate` changes nothing. The
+  README's "Moving off `RestTemplate`" table names each newer entry point.
 
 ### Fixed
 - **The library's meters were never registered in an application whose `MeterRegistry` comes

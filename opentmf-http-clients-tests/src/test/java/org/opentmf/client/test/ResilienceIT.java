@@ -11,13 +11,17 @@ import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.opentmf.client.common.exception.OpenTmfClientResilienceException;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
+import org.opentmf.client.common.model.ResilienceProperties;
+import org.opentmf.client.common.resilience.ResilienceRegistries;
 import org.opentmf.client.rest.util.SyncClientUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.test.StepVerifier;
 
@@ -26,34 +30,40 @@ import reactor.test.StepVerifier;
  * clients configured with {@code resilience.enabled: true}, after which calls fail fast with
  * {@link OpenTmfClientResilienceException} and the retry utility refuses to retry them. The
  * breakers use a 60s open-state so the state cannot flip back mid-test; each test uses its own
- * client id, so breaker state never leaks between tests.
+ * client id, and the sync breaker is reset before each run, so breaker state never leaks
+ * between tests.
  */
 @SpringBootTest
 class ResilienceIT {
 
   private static final String API_PATH = "/api/storm";
 
-  @Autowired private RestTemplate stormSyncRestTemplate;
+  @Autowired private ApplicationContext context;
+  @Autowired private ResilienceRegistries resilienceRegistries;
   @Autowired private WebClient stormReactiveWebClient;
 
   @BeforeEach
   void setUp() {
     resetMockServer();
+    // Both shapes of stormSync share one breaker: each run starts from a closed one.
+    resilienceRegistries.circuitBreaker("stormSync", new ResilienceProperties()).reset();
   }
 
-  @Test
-  void syncClient_503Storm_opensCircuit_failsFast_andRetryRefuses() {
+  /** Both shapes of the client: the RestTemplate and the RestClient bean. */
+  @ParameterizedTest(name = "{0}")
+  @ValueSource(strings = {"stormSyncRestTemplate", "stormSyncRestClient"})
+  void syncClient_503Storm_opensCircuit_failsFast_andRetryRefuses(String beanName) {
     get(API_PATH, 10, "unavailable", HttpStatus.SERVICE_UNAVAILABLE);
 
     for (int i = 0; i < 4; i++) {
       assertThatThrownBy(() ->
-          stormSyncRestTemplate.getForObject(BASE_URL + API_PATH, String.class))
+          SyncShapes.get(context, beanName, BASE_URL + API_PATH))
           .isInstanceOf(OpenTmfClientResponseException.class)
           .isNotInstanceOf(OpenTmfClientResilienceException.class);
     }
 
     assertThatThrownBy(() ->
-        stormSyncRestTemplate.getForObject(BASE_URL + API_PATH, String.class))
+        SyncShapes.get(context, beanName, BASE_URL + API_PATH))
         .isInstanceOf(OpenTmfClientResilienceException.class)
         .hasCauseInstanceOf(CallNotPermittedException.class)
         .satisfies(ex -> assertThat(((OpenTmfClientResilienceException) ex).getClientId())
@@ -63,7 +73,7 @@ class ResilienceIT {
     var wait = Duration.ofMillis(10);
     assertThatThrownBy(() -> SyncClientUtil.executeWithRetry(() -> {
       attempts.incrementAndGet();
-      return stormSyncRestTemplate.getForObject(BASE_URL + API_PATH, String.class);
+      return SyncShapes.get(context, beanName, BASE_URL + API_PATH);
     }, 3, wait))
         .isInstanceOf(OpenTmfClientResilienceException.class);
     assertThat(attempts).hasValue(1);

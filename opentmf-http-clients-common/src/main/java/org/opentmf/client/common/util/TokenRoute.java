@@ -9,7 +9,7 @@ package org.opentmf.client.common.util;
  *
  * <p>A NAME, not a path: lower-case words joined by a dash, no slash.</p>
  *
- * @since 2.5.2
+ * @since 2.6.0
  */
 public final class TokenRoute {
 

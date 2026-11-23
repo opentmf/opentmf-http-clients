@@ -12,7 +12,7 @@ import org.jspecify.annotations.Nullable;
  * {@code Authorization: Bearer <token>} header. A {@code 401} without that marker, a {@code 403}
  * and any other answer are not such a refusal.
  *
- * @since 2.5.2
+ * @since 2.6.0
  */
 public final class InvalidTokenRefusals {
 

@@ -18,6 +18,10 @@ import org.springframework.web.client.ResponseErrorHandler;
  * A {@link ResponseErrorHandler} that converts HTTP error responses into
  * {@link OpenTmfClientResponseException} (or {@link OpenTmfClientNotFoundException} for 404).
  * Registered automatically on all library-created {@code RestTemplate} instances.
+ *
+ * <p>Since 2.6.0: Spring marks {@link ResponseErrorHandler} for removal together with {@code
+ * RestTemplate}. A {@code RestClient} uses {@link OpenTmfRestClientStatusHandler}, which throws the
+ * same exceptions; this class keeps working unchanged.</p>
  */
 public class OpenTmfResponseErrorHandler implements ResponseErrorHandler {
 

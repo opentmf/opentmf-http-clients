@@ -24,7 +24,7 @@ public final class TokenCacheUtil {
    * stays.
    *
    * @return whether an entry was removed
-   * @since 2.5.2
+   * @since 2.6.0
    */
   public static boolean dropToken(Cache<String, TokenEntry> cache, String token,
       String tokenField) {

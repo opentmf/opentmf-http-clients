@@ -1,6 +1,7 @@
 package org.opentmf.client.starter.rest;
 
 import io.micrometer.observation.ObservationRegistry;
+import java.util.ArrayList;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.client5.http.config.ConnectionConfig;
@@ -17,15 +18,12 @@ import org.apache.hc.core5.util.Timeout;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.resilience.ResilienceRegistries;
 import org.opentmf.client.rest.service.api.OutboundInterceptorContribution;
-import org.opentmf.client.rest.util.OpenTmfResponseErrorHandler;
 import org.opentmf.client.starter.ApachePoolMeters;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
-import org.springframework.util.StringUtils;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.web.util.DefaultUriBuilderFactory;
 
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnClass(name = "org.apache.hc.client5.http.impl.classic.CloseableHttpClient")
@@ -45,8 +43,8 @@ public class ApacheRestTemplateFactory extends AbstractRestTemplateFactory {
   }
 
   @Override
-  public RestTemplate create(String clientId, ClientProperties properties) {
-    log.debug("Creating Apache HttpClient 5 RestTemplate for client: {}", clientId);
+  SyncClientPipeline pipeline(String clientId, ClientProperties properties, String shape) {
+    log.debug("Creating Apache HttpClient 5 {} for client: {}", shape, clientId);
     try {
       var sslContext = buildSslContext(properties);
 
@@ -107,22 +105,15 @@ public class ApacheRestTemplateFactory extends AbstractRestTemplateFactory {
 
       var httpClient = httpClientBuilder.build();
 
-      var restTemplate = new RestTemplate(requestFactory(httpClient, properties));
-      restTemplate.setErrorHandler(
-          new OpenTmfResponseErrorHandler(properties));
-      applyObservationRegistry(restTemplate);
-      addContributedInterceptors(restTemplate);
-      addResilienceInterceptor(restTemplate, clientId, properties);
-      addFixedHeadersInterceptor(restTemplate, properties);
-      addLogbookInterceptor(restTemplate, properties);
-
-      if (StringUtils.hasText(properties.getBaseUrl())) {
-        restTemplate.setUriTemplateHandler(
-            new DefaultUriBuilderFactory(properties.getBaseUrl()));
-      }
-      return restTemplate;
+      var interceptors = new ArrayList<ClientHttpRequestInterceptor>();
+      addContributedInterceptors(interceptors);
+      addResilienceInterceptor(interceptors, clientId, properties);
+      addFixedHeadersInterceptor(interceptors, properties);
+      addLogbookInterceptor(interceptors, properties);
+      return pipelineOf(requestFactory(httpClient, properties), interceptors, properties);
     } catch (Exception e) {
-      throw new IllegalArgumentException("Failed to create Apache RestTemplate for " + clientId, e);
+      throw new IllegalArgumentException(
+          "Failed to create Apache " + shape + " for " + clientId, e);
     }
   }
 

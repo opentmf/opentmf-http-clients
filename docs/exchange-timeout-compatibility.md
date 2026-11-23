@@ -29,7 +29,7 @@ measured, not read from the code.
 **Develop against the branch: 24 of 24 cells identical** in outcome and exception chain, the
 times within 17 ms of each other. **2.5.1 against the branch: 23 of 24 identical.** The one
 difference (apache, stall, Logbook writing) is not this change: develop has it too. It is the fix
-of 2.5.2's "Fixed" entry, where on 2.5.1 a body cut short came back as a `200` without a body when
+of 2.6.0's "Fixed" entry, where on 2.5.1 a body cut short came back as a `200` without a body when
 Logbook logged it.
 
 | Type | Peer | Logbook | 2.5.1 ms | develop ms | branch ms | Outcome on the branch |

@@ -16,11 +16,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockserver.integration.ClientAndServer;
+import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.model.ClientType;
 import org.opentmf.client.common.resilience.ResilienceRegistries;
 import org.opentmf.client.rest.resilience.ResilienceClientHttpRequestInterceptor;
 import org.opentmf.client.rest.service.api.OutboundInterceptorContribution;
+import org.opentmf.client.rest.service.api.RestClientFactory;
 import org.opentmf.client.rest.service.api.SyncTokenService;
 import org.opentmf.client.rest.util.GzipClientHttpRequestInterceptor;
 import org.opentmf.client.rest.util.RefusedTokenInterceptor;
@@ -243,6 +245,54 @@ class OutboundInterceptorContributionIT {
         });
   }
 
+  @ParameterizedTest
+  @ValueSource(strings = {"jdk", "apache"})
+  void dynamicRestClientOnlyClients_carryTheContributions(String clientType) {
+    contextRunner
+        .withUserConfiguration(RecordingContributions.class)
+        .withPropertyValues("opentmf.http-clients.unused.base-url=http://localhost:9999")
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          var properties = new ClientProperties();
+          properties.setBaseUrl(baseUrl);
+          properties.setFixedHeaders(Map.of("X-Custom", "myvalue"));
+          var client = context.getBean(HttpClientRegistry.class)
+              .getOrCreateRestClient("dynamic", ClientType.valueOf(clientType.toUpperCase()),
+                  properties);
+
+          assertThat(client.restClient().get().uri("/api/hello").retrieve().body(String.class))
+              .isEqualTo("hello");
+          assertThat(SEEN).containsExactly(
+              "early /api/hello X-Custom=null", "late /api/hello X-Custom=null");
+        });
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"jdk", "apache"})
+  void theRestClientFactory_isABean_andItsClientsCarryTheContributions(String clientType) {
+    catalogClient(clientType)
+        .withUserConfiguration(RecordingContributions.class)
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          var factories = context.getBeansOfType(RestClientFactory.class);
+          assertThat(factories).isNotEmpty();
+          var properties = new ClientProperties();
+          properties.setBaseUrl(baseUrl);
+          properties.setFixedHeaders(Map.of("X-Custom", "myvalue"));
+          var type = ClientType.valueOf(clientType.toUpperCase());
+          var restClient = factories.values().stream()
+              .filter(factory -> type == ClientType.APACHE
+                  == factory.getClass().getSimpleName().startsWith("Apache"))
+              .findFirst().orElseThrow()
+              .createRestClient("adHoc", properties);
+
+          assertThat(restClient.get().uri("/api/hello").retrieve().body(String.class))
+              .isEqualTo("hello");
+          assertThat(SEEN).containsExactly(
+              "early /api/hello X-Custom=null", "late /api/hello X-Custom=null");
+        });
+  }
+
   @Test
   void withoutContributionBeans_theLibrarysChainIsUnchanged() {
     catalogClient("jdk").run(context -> {
@@ -261,6 +311,43 @@ class OutboundInterceptorContributionIT {
           .requestInterceptors(restClientChain::addAll);
       assertThat(restClientChain).containsExactlyElementsOf(interceptors);
     });
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"jdk", "apache"})
+  void theRegistrarsRestTemplate_carriesTheRefusedTokenHook_onlyWhenTheClientMintsItsTokens(
+      String clientType) {
+    contextRunner
+        .withPropertyValues("opentmf.http-clients.unused.base-url=http://localhost:9999")
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          var registrar = context.getBean(RestClientRegistrar.class);
+          var type = ClientType.valueOf(clientType.toUpperCase());
+
+          var minting = new ClientProperties();
+          minting.setBaseUrl(baseUrl);
+          minting.setBearerAuth(new BearerAuthConfig());
+          var interceptors = registrar.createRestTemplate("minting", type, minting)
+              .getInterceptors();
+          // just ahead of Logbook (behind its body-read guard), which stays innermost
+          assertThat(interceptors).filteredOn(RefusedTokenInterceptor.class::isInstance)
+              .hasSize(1);
+          assertThat(interceptors).last().isInstanceOf(BodyReadFailureGuard.class);
+          assertThat(interceptors.get(interceptors.size() - 2))
+              .isInstanceOf(RefusedTokenInterceptor.class);
+
+          var mocked = new ClientProperties();
+          mocked.setBaseUrl(baseUrl);
+          mocked.setBearerAuth(new BearerAuthConfig());
+          mocked.getBearerAuth().setUseMock(true);
+          assertThat(registrar.createRestTemplate("mocked", type, mocked).getInterceptors())
+              .noneMatch(RefusedTokenInterceptor.class::isInstance);
+
+          var plain = new ClientProperties();
+          plain.setBaseUrl(baseUrl);
+          assertThat(registrar.createRestTemplate("plain", type, plain).getInterceptors())
+              .noneMatch(RefusedTokenInterceptor.class::isInstance);
+        });
   }
 
   private static ClientHttpRequestInterceptor interceptorOf(ApplicationContext context,

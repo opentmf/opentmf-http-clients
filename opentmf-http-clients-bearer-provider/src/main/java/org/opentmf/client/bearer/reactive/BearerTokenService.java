@@ -20,7 +20,7 @@ public interface BearerTokenService extends TokenService {
    * token this service does not hold. The library's clients call it on such a refusal of their
    * own calls; the refused call itself fails as before and is not retried.
    *
-   * @since 2.5.2
+   * @since 2.6.0
    */
   default void dropRefusedToken(String token) {
     // a service without a cache has nothing to drop

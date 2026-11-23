@@ -8,6 +8,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockserver.integration.ClientAndServer;
 import org.opentmf.client.test.util.MtlsCertificateUtil;
 import org.opentmf.client.test.util.MtlsCertificateUtil.CertificateBundle;
@@ -15,9 +17,9 @@ import org.opentmf.client.test.util.TcpTunnelProxy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.test.StepVerifier;
 
@@ -87,12 +89,7 @@ class MtlsProxyIT {
   private WebClient proxyReactiveWebClient;
 
   @Autowired
-  @Qualifier("proxyRestJdkRestTemplate")
-  private RestTemplate proxyRestJdkRestTemplate;
-
-  @Autowired
-  @Qualifier("proxyRestApacheRestTemplate")
-  private RestTemplate proxyRestApacheRestTemplate;
+  private ApplicationContext context;
 
   // --- Positive tests: mTLS + proxy through TCP tunnel ---
 
@@ -123,40 +120,28 @@ class MtlsProxyIT {
         .verifyComplete();
   }
 
-  @Test
-  void testRestJdkClient_withMtlsAndProxy_httpsGetSucceeds() {
-    mockGet("/proxy-jdk-get", "jdk proxy+mTLS OK");
+  /** Both shapes of both sync backends: the RestTemplate and the RestClient bean. */
+  @ParameterizedTest(name = "{0} {1}")
+  @CsvSource({"Jdk, RestTemplate", "Jdk, RestClient", "Apache, RestTemplate",
+      "Apache, RestClient"})
+  void testRestClient_withMtlsAndProxy_httpsGetSucceeds(String backend, String shape) {
+    var path = "/proxy-" + backend + "-" + shape + "-get";
+    mockGet(path, backend + " proxy+mTLS OK");
 
-    String result = proxyRestJdkRestTemplate.getForObject(
-        targetBaseUrl + "/proxy-jdk-get", String.class);
-    assertThat(result).isEqualTo("jdk proxy+mTLS OK");
+    assertThat(SyncShapes.get(context, "proxyRest" + backend + shape, targetBaseUrl + path))
+        .isEqualTo(backend + " proxy+mTLS OK");
   }
 
-  @Test
-  void testRestJdkClient_withMtlsAndProxy_httpsPostSucceeds() {
-    mockPost("/proxy-jdk-post", "jdk proxy post OK");
+  @ParameterizedTest(name = "{0} {1}")
+  @CsvSource({"Jdk, RestTemplate", "Jdk, RestClient", "Apache, RestTemplate",
+      "Apache, RestClient"})
+  void testRestClient_withMtlsAndProxy_httpsPostSucceeds(String backend, String shape) {
+    var path = "/proxy-" + backend + "-" + shape + "-post";
+    mockPost(path, backend + " proxy post OK");
 
-    String result = proxyRestJdkRestTemplate.postForObject(
-        targetBaseUrl + "/proxy-jdk-post", "{\"key\":\"value\"}", String.class);
-    assertThat(result).isEqualTo("jdk proxy post OK");
-  }
-
-  @Test
-  void testRestApacheClient_withMtlsAndProxy_httpsGetSucceeds() {
-    mockGet("/proxy-apache-get", "apache proxy+mTLS OK");
-
-    String result = proxyRestApacheRestTemplate.getForObject(
-        targetBaseUrl + "/proxy-apache-get", String.class);
-    assertThat(result).isEqualTo("apache proxy+mTLS OK");
-  }
-
-  @Test
-  void testRestApacheClient_withMtlsAndProxy_httpsPostSucceeds() {
-    mockPost("/proxy-apache-post", "apache proxy post OK");
-
-    String result = proxyRestApacheRestTemplate.postForObject(
-        targetBaseUrl + "/proxy-apache-post", "{\"key\":\"value\"}", String.class);
-    assertThat(result).isEqualTo("apache proxy post OK");
+    assertThat(SyncShapes.post(context, "proxyRest" + backend + shape, targetBaseUrl + path,
+        "{\"key\":\"value\"}"))
+        .isEqualTo(backend + " proxy post OK");
   }
 
   // --- Helpers ---
