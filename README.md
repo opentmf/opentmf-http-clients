@@ -393,6 +393,8 @@ For each entry in the `http-clients` map with key `clientId`, the registered bea
 | `{clientId}WebClient` | `WebClient` |
 | `{clientId}TokenService` | `TokenService` |
 
+Derive a client from `{clientId}WebClient` once, at bean creation, not per call: every `mutate()...build()` on Boot's `WebClient.Builder` rebuilds all codecs, about 120 to 160 µs per build against about 20 µs for a plain builder (measured on 2.6.0).
+
 ### REST clients (`client-type: jdk` or `client-type: apache`)
 
 | Bean Name | Type |

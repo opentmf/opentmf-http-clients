@@ -253,6 +253,14 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   names the newer entry point. An application that keeps using `RestTemplate` changes nothing. The
   README's "Moving off `RestTemplate`" table names each newer entry point.
 
+- Dependency and build-tooling updates: Spring Boot 4.1.1 → 4.2.0 (Spring Framework 7.0.9 →
+  7.1.0), so the library is built and tested on the framework its consumers run;
+  opentmf-mockserver (tests) 2.1.13 → 2.1.16; maven-surefire/failsafe 3.6.0 → 3.6.1,
+  maven-enforcer-plugin 3.6.3 → 3.7.0, jacoco-maven-plugin 0.8.15 → 0.8.16,
+  sonar-maven-plugin 5.8.0.7211 → 5.9.0.7382.
+- README: derive a client from `{clientId}WebClient` once, not per call; each derived build
+  rebuilds all codecs on Boot's `WebClient.Builder` (the same in earlier releases).
+
 ### Fixed
 - **The library's meters were never registered in an application whose `MeterRegistry` comes
   from Boot's metrics auto-configuration** (actuator or `spring-boot-micrometer-metrics`; every
