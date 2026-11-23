@@ -14,6 +14,7 @@ import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.opentmf.client.bearer.model.TokenEntry;
 import org.opentmf.client.bearer.util.BearerTokenUtil;
+import org.opentmf.client.bearer.util.TokenCacheUtil;
 import org.opentmf.client.bearer.util.TokenMints;
 import org.opentmf.client.common.model.BearerAuthConfig;
 import tools.jackson.databind.node.ObjectNode;
@@ -74,6 +75,11 @@ public class SyncBearerTokenServiceImpl implements SyncBearerTokenService {
   public void clearCache() {
     tokenCache.invalidateAll();
     mints.forget();
+  }
+
+  @Override
+  public void dropRefusedToken(String token) {
+    TokenCacheUtil.dropToken(tokenCache, token, config.getTokenField());
   }
 
   private String getTokenInternal(String additionalScopes, Map<String, String> enricher) {

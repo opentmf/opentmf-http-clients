@@ -953,6 +953,39 @@ opentmf:
 up to half of it either way. The token calls of keys and pods that failed together then do not
 all retry at the same moment. The number of retries and the `Retry-After` handling are as before.
 
+### A token refused as invalid
+
+A cached token lives for `expires_in` times `cache-safety-factor`. An API can refuse it sooner:
+the identity provider rotated its signing keys, the token was revoked, or the host was suspended
+while the token's real lifetime ran on. When an API answers a call of a bearer client with `401`
+and a Bearer challenge that says the token is invalid (RFC 6750):
+
+```
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: Bearer error="invalid_token", error_description="The access token expired"
+```
+
+the client's token service drops the refused token from its cache, and the next `getToken()` mints
+a fresh one. Every bearer client does this, `jdk`, `apache` and `netty`, static (`<id>RestClient`,
+`<id>RestTemplate`, `<id>WebClient`) and dynamic (`HttpClientRegistry`) alike. With
+`use-mock: true` nothing is dropped.
+
+- **The refused call fails as before**: the same exception with the same status. The library does
+  not retry it; a caller that wants a second attempt makes it, and that attempt gets a new token.
+- **Only that token is dropped.** The entry is found by its token value: a token minted for the key
+  in the meantime stays, and a refusal of a token the client never minted drops nothing.
+- **Nothing else drops a token**: a `401` without `error="invalid_token"` (a bare `Bearer`
+  challenge, `insufficient_scope`, no challenge at all), a `403`, or the token endpoint's own
+  refusal (see `refusal-memory` above).
+- One `INFO` line per dropped token, without the token: `A cached bearer token was refused as
+  invalid (401, error="invalid_token"): its cache entry is dropped, the next token request mints a
+  fresh one`.
+
+A token service wired by hand gets the same through `dropRefusedToken(token)` of
+`SyncBearerTokenService` / `BearerTokenService`, called with the refused request's bearer token;
+`InvalidTokenRefusals.refusedToken(status, wwwAuthenticate, authorization)` tells such an answer
+apart.
+
 ## Mutual TLS Support
 
 Both reactive and REST clients support Mutual TLS authentication through configuration. At least a key store must be provided in the `certificates` block. mTLS can be used together with a forward proxy (HTTP CONNECT tunneling) — the TLS handshake happens end-to-end through the tunnel.
