@@ -124,6 +124,16 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   token request runs on, for code that wires the token clients by hand.
 
 ### Changed
+- **A token an API refuses as invalid is dropped from the cache.** A cached bearer token was
+  dropped only when its cache time ran out, so a client kept sending a token an API had refused
+  (signing keys rotated, the token revoked, the host suspended while the token's lifetime ran on)
+  until then. Now an API's `401` with `WWW-Authenticate: Bearer error="invalid_token"` on a call of
+  a bearer client drops that token, and the next `getToken()` mints a fresh one: `jdk`, `apache`
+  and `netty`, static and dynamic clients. The refused call fails exactly as before and is **not**
+  retried. A `401` without the marker, a `403` and a refusal of a token the client never minted
+  drop nothing. New: `dropRefusedToken(String)` on `SyncBearerTokenService` and
+  `BearerTokenService` (a default method that does nothing), `InvalidTokenRefusals`,
+  `RefusedTokenInterceptor`, `RefusedTokenFilter`, `ReactiveClientRegistrar.bindRefusedTokens`.
 - **A token fetch's client observation is labelled `uri=token-fetch`.** The token call goes to
   the configured token address, not a URI template, so its `http.client.requests` metric and span
   carried `uri=none`, and a dashboard could not tell it from the client's other untemplated calls.

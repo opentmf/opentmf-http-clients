@@ -4,6 +4,7 @@ import static org.opentmf.client.common.util.TokenUtil.REST_CLIENT;
 import static org.opentmf.client.common.util.TokenUtil.REST_TEMPLATE;
 import static org.opentmf.client.common.util.TokenUtil.TOKEN_SERVICE;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -14,6 +15,7 @@ import org.opentmf.client.bearer.sync.SyncBearerTokenServiceImpl;
 import org.opentmf.client.bearer.sync.SyncBearerTokenServiceMockImpl;
 import org.opentmf.client.bearer.sync.SyncTokenClientImpl;
 import org.opentmf.client.bearer.util.TokenCacheUtil;
+import org.opentmf.client.common.model.AuthType;
 import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.model.ClientType;
@@ -26,6 +28,7 @@ import org.opentmf.client.rest.service.impl.NoOpSyncTokenService;
 import org.opentmf.client.rest.service.impl.SyncBasicTokenServiceImpl;
 import org.opentmf.client.rest.util.FixedHeadersClientHttpRequestInterceptor;
 import org.opentmf.client.rest.util.OpenTmfRestClientStatusHandler;
+import org.opentmf.client.rest.util.RefusedTokenInterceptor;
 import org.opentmf.client.rest.util.TokenFetchObservationConvention;
 import org.opentmf.client.starter.TokenFetchMeters;
 import org.springframework.beans.factory.ObjectProvider;
@@ -36,6 +39,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestTemplate;
 
@@ -109,7 +113,14 @@ public class RestClientRegistrar {
    */
   public SyncClientPipeline createPipeline(String clientId, ClientType clientType,
       ClientProperties properties) {
-    return backend(clientId, clientType).pipeline(clientId, properties);
+    var backend = backend(clientId, clientType);
+    var pipeline = backend.pipeline(clientId, properties);
+    if (!usesMintedTokens(properties)) {
+      return pipeline;
+    }
+    var interceptors = new ArrayList<>(pipeline.interceptors());
+    addRefusedTokenInterceptor(interceptors);
+    return backend.pipelineOf(pipeline.requestFactory(), interceptors, properties);
   }
 
   /**
@@ -135,7 +146,11 @@ public class RestClientRegistrar {
    */
   public RestTemplate createRestTemplate(String clientId, ClientType clientType,
       ClientProperties properties) {
-    return backend(clientId, clientType).create(clientId, properties);
+    var restTemplate = backend(clientId, clientType).create(clientId, properties);
+    if (usesMintedTokens(properties)) {
+      addRefusedTokenInterceptor(restTemplate.getInterceptors());
+    }
+    return restTemplate;
   }
 
   private AbstractRestTemplateFactory backend(String clientId, ClientType clientType) {
@@ -151,6 +166,24 @@ public class RestClientRegistrar {
       throw new IllegalStateException(msg);
     }
     return backend;
+  }
+
+  /** Whether the client's calls carry tokens it mints itself, so an API can refuse one. */
+  private static boolean usesMintedTokens(ClientProperties properties) {
+    return properties.getAuthType() == AuthType.BEARER && !properties.getBearerAuth().isUseMock();
+  }
+
+  /**
+   * Puts the refused-token hook just inside the library's own interceptors and ahead of Logbook,
+   * which stays innermost. It reads only the answer's status and headers, and it is bound to the
+   * token service later.
+   */
+  private static void addRefusedTokenInterceptor(List<ClientHttpRequestInterceptor> interceptors) {
+    int at = interceptors.size();
+    while (at > 0 && interceptors.get(at - 1) instanceof BodyReadFailureGuard) {
+      at--;
+    }
+    interceptors.add(at, new RefusedTokenInterceptor());
   }
 
   /**
@@ -262,8 +295,11 @@ public class RestClientRegistrar {
         tokenRestClient(restClient, tokenFactory, bearerConfig), properties, bearerConfig,
         tokenFetchListener(clientId));
     var cache = TokenCacheUtil.buildTokenCache();
-    return new SyncBearerTokenServiceImpl(bearerConfig, cache, syncTokenClient,
+    var tokenService = new SyncBearerTokenServiceImpl(bearerConfig, cache, syncTokenClient,
         properties.getMaxRetryAfter());
+    // an API's 401 with error="invalid_token" on this client drops the refused token
+    RefusedTokenInterceptor.bind(restClient, tokenService::dropRefusedToken);
+    return tokenService;
   }
 
   /**
@@ -319,6 +355,8 @@ public class RestClientRegistrar {
         .observationConvention(new TokenFetchObservationConvention())
         .requestInterceptors(interceptors -> {
           interceptors.removeIf(FixedHeadersClientHttpRequestInterceptor.class::isInstance);
+          // the token endpoint's own refusal is a credential failure, not an API's
+          interceptors.removeIf(RefusedTokenInterceptor.class::isInstance);
           if (logbookSupport != null && !bearerConfig.isLogResponseBody()) {
             logbookSupport.useTokenCallInterceptor(interceptors);
           }

@@ -9,9 +9,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.opentmf.client.bearer.observe.TokenFetchListener;
 import org.opentmf.client.bearer.reactive.BearerTokenClientImpl;
+import org.opentmf.client.bearer.reactive.BearerTokenService;
 import org.opentmf.client.bearer.reactive.BearerTokenServiceImpl;
 import org.opentmf.client.bearer.reactive.BearerTokenServiceMockImpl;
 import org.opentmf.client.bearer.util.TokenCacheUtil;
+import org.opentmf.client.common.model.AuthType;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.util.BearerAuthRequirements;
 import org.opentmf.client.common.util.TokenCallProperties;
@@ -20,6 +22,7 @@ import org.opentmf.client.reactive.resilience.ReactiveResilience;
 import org.opentmf.client.reactive.service.api.TokenService;
 import org.opentmf.client.reactive.service.impl.BasicTokenServiceImpl;
 import org.opentmf.client.reactive.service.impl.NoOpTokenService;
+import org.opentmf.client.reactive.util.RefusedTokenFilter;
 import org.opentmf.client.reactive.util.WebClientConfigUtil;
 import org.opentmf.client.starter.TokenFetchMeters;
 import org.springframework.beans.factory.ObjectProvider;
@@ -79,9 +82,26 @@ public class ReactiveClientRegistrar {
       log.warn("Client '{}' has logging-enabled: true, but no Logbook bean found. "
           + "Add org.zalando:logbook-netty to your classpath to enable HTTP logging.", clientId);
     }
-    registerIfAbsent(clientId + WEB_CLIENT, createWebClient(clientId, clientId, properties,
-        WebClientConfigUtil.buildConnectionProvider(clientId, properties)));
-    registerIfAbsent(clientId + TOKEN_SERVICE, createTokenService(clientId, properties, null));
+    var webClient = createWebClient(clientId, clientId, properties,
+        WebClientConfigUtil.buildConnectionProvider(clientId, properties));
+    var tokenService = createTokenService(clientId, properties, null);
+    bindRefusedTokens(webClient, tokenService);
+    registerIfAbsent(clientId + WEB_CLIENT, webClient);
+    registerIfAbsent(clientId + TOKEN_SERVICE, tokenService);
+  }
+
+  /**
+   * Lets the client's {@code WebClient} report an API's refusal of a bearer token as invalid
+   * ({@code 401} with {@code error="invalid_token"}) to its token service, which drops that token
+   * from its cache; the refused call fails as before and is not retried. Does nothing unless the
+   * client was built by {@link #createWebClient} for bearer authentication.
+   *
+   * @since 2.6.0
+   */
+  public void bindRefusedTokens(WebClient webClient, TokenService tokenService) {
+    if (tokenService instanceof BearerTokenService bearer) {
+      RefusedTokenFilter.bind(webClient, bearer::dropRefusedToken);
+    }
   }
 
   /**
@@ -95,8 +115,13 @@ public class ReactiveClientRegistrar {
    */
   public WebClient createWebClient(String connectionName, String resilienceName,
       ClientProperties properties, ConnectionProvider connectionProvider) {
-    return build(connectionName, resilienceName, properties, connectionProvider,
+    var webClient = build(connectionName, resilienceName, properties, connectionProvider,
         WebClientConfigUtil::createWebClient, false);
+    if (properties.getAuthType() != AuthType.BEARER || properties.getBearerAuth().isUseMock()) {
+      return webClient;
+    }
+    // innermost: sees the answer as the API sent it; bound by bindRefusedTokens
+    return webClient.mutate().filter(new RefusedTokenFilter()).build();
   }
 
   /**

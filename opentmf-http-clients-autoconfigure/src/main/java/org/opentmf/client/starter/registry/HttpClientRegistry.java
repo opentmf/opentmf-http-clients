@@ -267,6 +267,7 @@ public class HttpClientRegistry implements DisposableBean {
           name + "Token", name, properties, tokenConnectionProvider);
     }
     var tokenService = reactiveRegistrar.createTokenService(name, properties, tokenWebClient);
+    reactiveRegistrar.bindRefusedTokens(webClient, tokenService);
     var managed = new ManagedReactiveClient(webClient, tokenService);
     // The closer MUST NOT be a lambda declared in this class: a lambda capturing
     // ConnectionProvider compiles to a synthetic method of THIS class whose descriptor
