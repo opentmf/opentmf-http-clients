@@ -104,17 +104,23 @@ public final class SyncClientPipeline {
   /**
    * The {@code RestClient} carries the pipeline's converters, not Spring's defaults: a client
    * derived from it ({@code mutate()...build()}, as a consumer does per call to add a credential)
-   * then reuses them. Without them every such build assembles Spring's default set anew, which
-   * detects the classpath (the JAXB converter scans jars), about 15 ms each. The converters are the
-   * {@code RestTemplate}'s, the same instances in the same order, and Spring appends one form
-   * converter: the layout of a client built with {@code RestClient.builder(restTemplate)}.
+   * then reuses them. Without them every such build detects Spring's default set anew, which
+   * constructs the classpath's converters (the JAXB one scans jars), tens of milliseconds each. The
+   * converters are the {@code RestTemplate}'s, the same instances in the same order, and Spring
+   * appends one form or multipart converter: the layout of a client built with
+   * {@code RestClient.builder(restTemplate)}.
+   *
+   * <p>The configurer turns the defaults off itself: Spring Framework 7.0 skips them when a
+   * configurer is set, but 7.1 registers them first and applies the configurer on top.</p>
    */
   private RestClient buildRestClient(RestClient.ResponseSpec.ErrorHandler errorHandler) {
     var converters = messageConverters;
     var builder = RestClient.builder()
         .requestFactory(requestFactory)
-        .configureMessageConverters(
-            converterBuilder -> converters.forEach(converterBuilder::addCustomConverter))
+        .configureMessageConverters(converterBuilder -> {
+          converterBuilder.disableDefaults();
+          converters.forEach(converterBuilder::addCustomConverter);
+        })
         .requestInterceptors(chain -> chain.addAll(interceptors))
         .defaultStatusHandler(HttpStatusCode::isError, errorHandler);
     if (observationRegistry != null) {
