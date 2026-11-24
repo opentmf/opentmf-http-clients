@@ -85,8 +85,8 @@ snapshots only.
 
 ## The comparison behind this page
 
-japicmp 0.23.1, protected and public API, incompatible changes only, each module's 3.0.0 jar of
-this branch against the same module of the baseline:
+japicmp 0.23.1, protected and public API, incompatible changes only, each module's 3.0.0 jar
+against the same module of the baseline:
 
 ```
 java -jar japicmp-0.23.1-jar-with-dependencies.jar -o <baseline>.jar -n <3.0.0>.jar \
