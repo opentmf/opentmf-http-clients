@@ -399,7 +399,7 @@ auditable, whereas a header is not. **Ignore entirely; not even logged.**
 ### 6.4 `Location` as automatic redirect following
 
 Distinct from exposing `Location` (§5). Each transport already owns redirect
-policy (`ApacheRestTemplateFactory`, `JdkRestTemplateFactory`,
+policy (`ApacheRestClientFactory`, `JdkRestClientFactory`,
 `WebClientConfigUtil`), and it is configurable there. Re-implementing
 redirect-following at the library layer would double-follow, bypass the
 transports' loop protection, and — most seriously — risk **replaying the

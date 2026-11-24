@@ -80,53 +80,6 @@ class HttpClientRegistryIT {
   }
 
   @Test
-  void getOrCreate_isIdempotent_untilReplace() {
-    contextRunner.run(context -> {
-      var registry = immediateCloseRegistry(context);
-      var first = registry.getOrCreate("onedms", ClientType.JDK, properties());
-      var again = registry.getOrCreate("onedms", ClientType.JDK, properties());
-      assertThat(again).isSameAs(first);
-      assertThat(registry.names()).containsExactly("onedms");
-
-      var replaced = registry.replace("onedms", ClientType.JDK, properties());
-      assertThat(replaced).isNotSameAs(first);
-      assertThat(replaced.restTemplate()).isNotSameAs(first.restTemplate());
-      assertThat(registry.names()).containsExactly("onedms");
-      registry.destroy();
-    });
-  }
-
-  @Test
-  void replace_closesTheRetiredApacheClient() {
-    contextRunner.run(context -> {
-      var registry = immediateCloseRegistry(context);
-      var old = registry.getOrCreate("dxl", ClientType.APACHE, properties());
-      registry.replace("dxl", ClientType.APACHE, properties());
-
-      var thrown = catchThrowable(() ->
-          old.restTemplate().getForObject("http://localhost:9999/x", String.class));
-      assertThat(thrown).hasStackTraceContaining("shut down");
-      registry.destroy();
-    });
-  }
-
-  @Test
-  void evict_closesAndForgets() {
-    contextRunner.run(context -> {
-      var registry = immediateCloseRegistry(context);
-      var managed = registry.getOrCreate("gone", ClientType.APACHE, properties());
-      assertThat(registry.evict("gone")).isTrue();
-      assertThat(registry.evict("gone")).isFalse();
-      assertThat(registry.names()).isEmpty();
-
-      var thrown = catchThrowable(() ->
-          managed.restTemplate().getForObject("http://localhost:9999/x", String.class));
-      assertThat(thrown).hasStackTraceContaining("shut down");
-      registry.destroy();
-    });
-  }
-
-  @Test
   void getOrCreateRestClient_isIdempotent_untilReplaceRestClient() {
     contextRunner.run(context -> {
       var registry = immediateCloseRegistry(context);
@@ -158,31 +111,17 @@ class HttpClientRegistryIT {
   }
 
   @Test
-  void evict_closesARestClientOnlyClient() {
+  void evict_closesAndForgets() {
     contextRunner.run(context -> {
       var registry = immediateCloseRegistry(context);
       var managed = registry.getOrCreateRestClient("gone", ClientType.APACHE, properties());
       assertThat(registry.evict("gone")).isTrue();
+      assertThat(registry.evict("gone")).isFalse();
+      assertThat(registry.names()).isEmpty();
 
       var thrown = catchThrowable(() ->
           managed.restClient().get().uri("http://localhost:9999/x").retrieve().body(String.class));
       assertThat(thrown).hasStackTraceContaining("shut down");
-      registry.destroy();
-    });
-  }
-
-  @Test
-  void bothViewsOfOneName_shareOneClient() {
-    contextRunner.run(context -> {
-      var registry = immediateCloseRegistry(context);
-      var restClientView = registry.getOrCreateRestClient("shared", ClientType.APACHE,
-          properties());
-      var bothView = registry.getOrCreate("shared", ClientType.APACHE, properties());
-
-      assertThat(bothView.restClient()).isSameAs(restClientView.restClient());
-      assertThat(bothView.tokenService()).isSameAs(restClientView.tokenService());
-      assertThat(registry.getOrCreate("shared", ClientType.APACHE, properties()).restTemplate())
-          .isSameAs(bothView.restTemplate());
       registry.destroy();
     });
   }
@@ -211,11 +150,12 @@ class HttpClientRegistryIT {
     contextRunner.run(context -> {
       var registry = immediateCloseRegistry(context);
       var nettyProperties = properties();
-      assertThatThrownBy(() -> registry.getOrCreate("wrong", ClientType.NETTY, nettyProperties))
+      assertThatThrownBy(() ->
+          registry.getOrCreateRestClient("wrong", ClientType.NETTY, nettyProperties))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("getOrCreateReactive");
 
-      registry.getOrCreate("sync", ClientType.JDK, properties());
+      registry.getOrCreateRestClient("sync", ClientType.JDK, properties());
       var reactiveProperties = properties();
       assertThatThrownBy(() -> registry.getOrCreateReactive("sync", reactiveProperties))
           .isInstanceOf(IllegalStateException.class)
@@ -248,11 +188,11 @@ class HttpClientRegistryIT {
       var resilientProperties = properties();
       resilientProperties.getResilience().setEnabled(true);
 
-      registry.getOrCreate("flaky", ClientType.JDK, resilientProperties);
+      registry.getOrCreateRestClient("flaky", ClientType.JDK, resilientProperties);
       resilienceRegistries.circuitBreaker("flaky", resilientProperties.getResilience())
           .transitionToOpenState();
 
-      registry.replace("flaky", ClientType.JDK, resilientProperties);
+      registry.replaceRestClient("flaky", ClientType.JDK, resilientProperties);
 
       assertThat(resilienceRegistries.circuitBreaker("flaky",
           resilientProperties.getResilience()).getState())
@@ -280,7 +220,7 @@ class HttpClientRegistryIT {
     var registry = new HttpClientRegistry(null, null, emptyProvider(), emptyProvider(),
         Duration.ZERO);
     var clientProperties = properties();
-    assertThatThrownBy(() -> registry.getOrCreate("s", ClientType.JDK, clientProperties))
+    assertThatThrownBy(() -> registry.getOrCreateRestClient("s", ClientType.JDK, clientProperties))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("starter-rest");
     assertThatThrownBy(() -> registry.getOrCreateReactive("r", clientProperties))
@@ -297,7 +237,7 @@ class HttpClientRegistryIT {
           var registry = immediateCloseRegistry(context);
           var clientProperties = properties();
           assertThatThrownBy(() ->
-              registry.getOrCreate("dxl", ClientType.APACHE, clientProperties))
+              registry.getOrCreateRestClient("dxl", ClientType.APACHE, clientProperties))
               .isInstanceOf(IllegalStateException.class)
               .hasMessageContaining("httpclient5");
           registry.destroy();
@@ -313,7 +253,7 @@ class HttpClientRegistryIT {
           emptyProvider(),
           emptyProvider(),
           Duration.ZERO);
-      registry.getOrCreate("bare", ClientType.APACHE, properties());
+      registry.getOrCreateRestClient("bare", ClientType.APACHE, properties());
       assertThat(registry.evict("bare")).isTrue();
       registry.destroy();
     });
@@ -325,7 +265,8 @@ class HttpClientRegistryIT {
       var registry = immediateCloseRegistry(context);
       registry.getOrCreateReactive("mixed", properties());
       var clientProperties = properties();
-      assertThatThrownBy(() -> registry.getOrCreate("mixed", ClientType.JDK, clientProperties))
+      assertThatThrownBy(() ->
+          registry.getOrCreateRestClient("mixed", ClientType.JDK, clientProperties))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("reactive registry methods");
       registry.destroy();
@@ -336,7 +277,7 @@ class HttpClientRegistryIT {
   void replaceOnAbsentName_behavesLikeCreate() {
     contextRunner.run(context -> {
       var registry = immediateCloseRegistry(context);
-      var managed = registry.replace("fresh", ClientType.JDK, properties());
+      var managed = registry.replaceRestClient("fresh", ClientType.JDK, properties());
       assertThat(managed.restClient()).isNotNull();
       assertThat(registry.names()).containsExactly("fresh");
       registry.destroy();
@@ -376,17 +317,17 @@ class HttpClientRegistryIT {
           context.getBeanProvider(ResilienceRegistries.class),
           context.getBeanProvider(ApachePoolMeters.class),
           Duration.ofMinutes(5));
-      var managed = registry.getOrCreate("delayed", ClientType.APACHE, properties());
+      var managed = registry.getOrCreateRestClient("delayed", ClientType.APACHE, properties());
       registry.evict("delayed");
 
       // still open — the closer is queued behind the 5m grace period
       var beforeDestroy = catchThrowable(() ->
-          managed.restTemplate().getForObject("http://localhost:9999/x", String.class));
+          managed.restClient().get().uri("http://localhost:9999/x").retrieve().body(String.class));
       assertThat(beforeDestroy).hasStackTraceContaining("Connection refused");
 
       registry.destroy();
       var afterDestroy = catchThrowable(() ->
-          managed.restTemplate().getForObject("http://localhost:9999/x", String.class));
+          managed.restClient().get().uri("http://localhost:9999/x").retrieve().body(String.class));
       assertThat(afterDestroy).hasStackTraceContaining("shut down");
     });
   }
@@ -397,7 +338,7 @@ class HttpClientRegistryIT {
       var registry = immediateCloseRegistry(context);
       var meterRegistry = context.getBean(MeterRegistry.class);
 
-      registry.getOrCreate("pooled", ClientType.APACHE, properties());
+      registry.getOrCreateRestClient("pooled", ClientType.APACHE, properties());
       assertThat(meterRegistry.find("opentmf.client.pool.max")
           .tag("client", "pooled").gauge()).isNotNull();
 

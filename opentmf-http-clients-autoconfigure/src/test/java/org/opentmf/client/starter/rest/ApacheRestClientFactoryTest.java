@@ -33,10 +33,11 @@ import org.opentmf.client.common.resilience.ResilienceRegistries;
 import org.opentmf.client.rest.service.api.OutboundInterceptorContribution;
 import org.opentmf.client.starter.ApachePoolMeters;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.zalando.logbook.Logbook;
 import org.zalando.logbook.spring.LogbookClientHttpRequestInterceptor;
 
-class ApacheRestTemplateFactoryTest {
+class ApacheRestClientFactoryTest {
 
   private static ClientAndServer mockServer;
   private static final RestLogbookSupport LOGBOOK_SUPPORT =
@@ -59,8 +60,8 @@ class ApacheRestTemplateFactoryTest {
   };
   private static final ObjectProvider<OutboundInterceptorContribution> NO_CONTRIBUTIONS =
       ContributionTestSupport.NONE;
-  private final ApacheRestTemplateFactory factory =
-      new ApacheRestTemplateFactory(SUPPORT_PROVIDER, NO_RESILIENCE, NO_POOL_METERS, NO_OBSERVATION,
+  private final ApacheRestClientFactory factory =
+      new ApacheRestClientFactory(SUPPORT_PROVIDER, NO_RESILIENCE, NO_POOL_METERS, NO_OBSERVATION,
           NO_CONTRIBUTIONS);
 
   @BeforeAll
@@ -85,9 +86,9 @@ class ApacheRestTemplateFactoryTest {
 
     var props = new ClientProperties();
     props.setBaseUrl("http://localhost:" + mockServer.getLocalPort());
-    var restTemplate = factory.create("apacheTest", props);
+    var restClient = factory.createRestClient("apacheTest", props);
 
-    var result = restTemplate.getForObject("/hello", String.class);
+    var result = restClient.get().uri("/hello").retrieve().body(String.class);
     assertThat(result).isEqualTo("world");
   }
 
@@ -99,8 +100,8 @@ class ApacheRestTemplateFactoryTest {
     proxy.setProxyPort(mockServer.getLocalPort());
     props.setProxyConfig(proxy);
 
-    var restTemplate = factory.create("apacheProxy", props);
-    assertThat(restTemplate).isNotNull();
+    var restClient = factory.createRestClient("apacheProxy", props);
+    assertThat(restClient).isNotNull();
   }
 
   @Test
@@ -112,8 +113,8 @@ class ApacheRestTemplateFactoryTest {
     mockServer.when(request().withMethod("GET").withPath("/data"), Times.once())
         .respond(response().withStatusCode(200).withBody("ok"));
 
-    var restTemplate = factory.create("noRedirect", props);
-    var result = restTemplate.getForObject("/data", String.class);
+    var restClient = factory.createRestClient("noRedirect", props);
+    var result = restClient.get().uri("/data").retrieve().body(String.class);
     assertThat(result).isEqualTo("ok");
   }
 
@@ -128,25 +129,25 @@ class ApacheRestTemplateFactoryTest {
     certs.setKeyStore(ks);
     props.setCertificates(certs);
 
-    assertThatThrownBy(() -> factory.create("badCert", props))
+    assertThatThrownBy(() -> factory.createRestClient("badCert", props))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Apache RestTemplate");
+        .hasMessageContaining("Apache RestClient");
   }
 
   @Test
   void create_withValidCertificates() throws Exception {
     var props = new ClientProperties();
     props.setCertificates(generateCertificates());
-    var restTemplate = factory.create("sslApache", props);
-    assertThat(restTemplate).isNotNull();
+    var restClient = factory.createRestClient("sslApache", props);
+    assertThat(restClient).isNotNull();
   }
 
   @Test
   void create_withCertificatesAndTrustStore() throws Exception {
     var props = new ClientProperties();
     props.setCertificates(generateCertificatesWithTrustStore());
-    var restTemplate = factory.create("sslApacheTs", props);
-    assertThat(restTemplate).isNotNull();
+    var restClient = factory.createRestClient("sslApacheTs", props);
+    assertThat(restClient).isNotNull();
   }
 
   @Test
@@ -158,16 +159,16 @@ class ApacheRestTemplateFactoryTest {
     mockServer.when(request().withMethod("GET").withPath("/route"), Times.once())
         .respond(response().withStatusCode(200).withBody("routed"));
 
-    var restTemplate = factory.create("routeApache", props);
-    assertThat(restTemplate.getForObject("/route", String.class)).isEqualTo("routed");
+    var restClient = factory.createRestClient("routeApache", props);
+    assertThat(restClient.get().uri("/route").retrieve().body(String.class)).isEqualTo("routed");
   }
 
   @Test
   void create_withLoggingEnabled_addsLogbookInterceptor() {
     var props = new ClientProperties();
     props.setLoggingEnabled(true);
-    var restTemplate = factory.create("logbook", props);
-    assertThat(restTemplate.getInterceptors()).anyMatch(
+    var pipeline = factory.pipeline("logbook", props);
+    assertThat(pipeline.interceptors()).anyMatch(
         i -> i.getClass().getSimpleName().contains("Logbook"));
   }
 
@@ -175,8 +176,8 @@ class ApacheRestTemplateFactoryTest {
   void create_withLoggingDisabled_noLogbookInterceptor() {
     var props = new ClientProperties();
     props.setLoggingEnabled(false);
-    var restTemplate = factory.create("noLogbook", props);
-    assertThat(restTemplate.getInterceptors()).noneMatch(
+    var pipeline = factory.pipeline("noLogbook", props);
+    assertThat(pipeline.interceptors()).noneMatch(
         i -> i.getClass().getSimpleName().contains("Logbook"));
   }
 
@@ -187,12 +188,12 @@ class ApacheRestTemplateFactoryTest {
       @Override public RestLogbookSupport getIfAvailable() { return null; }
     };
     var localFactory =
-        new ApacheRestTemplateFactory(emptyProvider, NO_RESILIENCE, NO_POOL_METERS, NO_OBSERVATION,
+        new ApacheRestClientFactory(emptyProvider, NO_RESILIENCE, NO_POOL_METERS, NO_OBSERVATION,
             NO_CONTRIBUTIONS);
     var props = new ClientProperties();
     props.setLoggingEnabled(true);
-    var restTemplate = localFactory.create("noBean", props);
-    assertThat(restTemplate.getInterceptors()).noneMatch(
+    var pipeline = localFactory.pipeline("noBean", props);
+    assertThat(pipeline.interceptors()).noneMatch(
         i -> i.getClass().getSimpleName().contains("Logbook"));
   }
 
@@ -206,8 +207,9 @@ class ApacheRestTemplateFactoryTest {
     props.setBaseUrl("http://localhost:" + mockServer.getLocalPort());
     props.setFixedHeaders(Map.of("X-Custom", "myvalue"));
 
-    var restTemplate = factory.create("fixedHdr", props);
-    assertThat(restTemplate.getForObject("/headers", String.class)).isEqualTo("headered");
+    var restClient = factory.createRestClient("fixedHdr", props);
+    assertThat(restClient.get().uri("/headers").retrieve().body(String.class))
+        .isEqualTo("headered");
   }
 
   @Test
@@ -219,18 +221,19 @@ class ApacheRestTemplateFactoryTest {
         20);
     var early = new OutboundInterceptorContribution(ContributionTestSupport.recorder("early", seen),
         10);
-    var localFactory = new ApacheRestTemplateFactory(SUPPORT_PROVIDER, NO_RESILIENCE,
+    var localFactory = new ApacheRestClientFactory(SUPPORT_PROVIDER, NO_RESILIENCE,
         NO_POOL_METERS, NO_OBSERVATION,
         ContributionTestSupport.provider(late, early));
 
     var props = new ClientProperties();
     props.setBaseUrl("http://localhost:" + mockServer.getLocalPort());
     props.setFixedHeaders(Map.of("X-Custom", "myvalue"));
-    var restTemplate = localFactory.create("contributed", props);
+    var pipeline = localFactory.pipeline("contributed", props);
+    var restClient = pipeline.restClient();
 
-    assertThat(restTemplate.getInterceptors()).hasSize(2 + 2)
+    assertThat(pipeline.interceptors()).hasSize(2 + 2)
         .startsWith(early.interceptor(), late.interceptor());
-    assertThat(restTemplate.getForObject("/contributed", String.class)).isEqualTo("ok");
+    assertThat(restClient.get().uri("/contributed").retrieve().body(String.class)).isEqualTo("ok");
     // the fixed-headers interceptor had not run yet when the contributions saw the request
     assertThat(seen).containsExactly(
         "early /contributed X-Custom=null", "late /contributed X-Custom=null");
@@ -238,11 +241,11 @@ class ApacheRestTemplateFactoryTest {
 
   @Test
   void create_withoutContributions_keepsTheLibrarysOwnChain() {
-    assertThat(factory.create("bare", bareProperties()).getInterceptors()).isEmpty();
+    assertThat(factory.pipeline("bare", bareProperties()).interceptors()).isEmpty();
 
     var props = new ClientProperties();
     props.setFixedHeaders(Map.of("X-Custom", "myvalue"));
-    var interceptors = factory.create("uncontributed", props).getInterceptors();
+    var interceptors = factory.pipeline("uncontributed", props).interceptors();
     // fixed headers, Logbook (Apache decompresses in the HttpClient, not in an interceptor)
     assertThat(interceptors).hasSize(2);
     assertThat(interceptors.get(1)).isInstanceOf(LogbookClientHttpRequestInterceptor.class);
@@ -265,13 +268,13 @@ class ApacheRestTemplateFactoryTest {
     var props = new ClientProperties();
     props.setBaseUrl("http://localhost:" + mockServer.getLocalPort());
     var registry = ObservationTestSupport.headerInjectingRegistry();
-    var localFactory = new ApacheRestTemplateFactory(SUPPORT_PROVIDER, NO_RESILIENCE,
+    var localFactory = new ApacheRestClientFactory(SUPPORT_PROVIDER, NO_RESILIENCE,
         NO_POOL_METERS, ObservationTestSupport.provider(registry), NO_CONTRIBUTIONS);
 
-    var restTemplate = localFactory.create("traced", props);
+    var restClient = localFactory.createRestClient("traced", props);
 
-    assertThat(restTemplate.getObservationRegistry()).isSameAs(registry);
-    assertThat(restTemplate.getForObject("/traced", String.class)).isEqualTo("traced");
+    assertThat(ReflectionTestUtils.getField(restClient, "observationRegistry")).isSameAs(registry);
+    assertThat(restClient.get().uri("/traced").retrieve().body(String.class)).isEqualTo("traced");
   }
 
   @Test
@@ -283,8 +286,9 @@ class ApacheRestTemplateFactoryTest {
     props.setCompressionEnabled(false);
     props.setBaseUrl("http://localhost:" + mockServer.getLocalPort());
 
-    var restTemplate = factory.create("noComp", props);
-    assertThat(restTemplate.getForObject("/nocomp", String.class)).isEqualTo("uncompressed");
+    var restClient = factory.createRestClient("noComp", props);
+    assertThat(restClient.get().uri("/nocomp").retrieve().body(String.class))
+        .isEqualTo("uncompressed");
   }
 
   private static ClientProperties.Certificates generateCertificates() throws Exception {

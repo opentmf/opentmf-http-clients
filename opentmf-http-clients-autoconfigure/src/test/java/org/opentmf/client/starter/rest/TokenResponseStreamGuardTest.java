@@ -25,7 +25,6 @@ import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.mock.http.client.MockClientHttpRequest;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestTemplate;
 import org.zalando.logbook.Correlation;
 import org.zalando.logbook.HttpLogWriter;
 import org.zalando.logbook.Logbook;
@@ -134,11 +133,11 @@ class TokenResponseStreamGuardTest {
       }
     };
 
-    var restTemplate = new RestTemplate(factory);
-    restTemplate.setInterceptors(List.of(
-        GzipClientHttpRequestInterceptor.instance(),
-        new LogbookClientHttpRequestInterceptor(activeLogbook())));
-    var restClient = RestClient.builder(restTemplate)
+    var restClient = RestClient.builder()
+        .requestFactory(factory)
+        .requestInterceptors(interceptors -> interceptors.addAll(List.of(
+            GzipClientHttpRequestInterceptor.instance(),
+            new LogbookClientHttpRequestInterceptor(activeLogbook()))))
         .defaultStatusHandler(HttpStatusCode::isError,
             OpenTmfRestClientStatusHandler.errorHandler())
         .build();

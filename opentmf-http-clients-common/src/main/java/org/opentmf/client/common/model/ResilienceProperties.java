@@ -14,7 +14,7 @@ import org.springframework.validation.annotation.Validated;
 /**
  * Optional resilience4j decoration of a client, bound from
  * {@code opentmf.http-clients.<clientId>.resilience.*}. Disabled by default; when enabled, every
- * client shape of the id (RestTemplate, RestClient or WebClient, plus its bearer-token calls)
+ * client of the id (its RestClient or WebClient, plus its bearer-token calls)
  * runs inside the same named CircuitBreaker and, when configured, Bulkhead. Requires the
  * resilience4j-circuitbreaker and resilience4j-bulkhead jars (plus resilience4j-reactor for
  * netty clients) on the classpath.

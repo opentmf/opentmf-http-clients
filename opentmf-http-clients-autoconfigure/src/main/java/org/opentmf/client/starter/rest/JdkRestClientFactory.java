@@ -17,9 +17,9 @@ import org.springframework.http.client.ClientHttpRequestInterceptor;
 
 @Configuration(proxyBeanMethods = false)
 @Slf4j
-public class JdkRestTemplateFactory extends AbstractRestTemplateFactory {
+public class JdkRestClientFactory extends AbstractRestClientFactory {
 
-  public JdkRestTemplateFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider,
+  public JdkRestClientFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider,
       ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider,
       ObjectProvider<ObservationRegistry> observationRegistryProvider,
       ObjectProvider<OutboundInterceptorContribution> contributionsProvider) {

@@ -31,8 +31,8 @@ import org.springframework.context.annotation.Import;
     org.opentmf.client.starter.reactive.ReactiveClientRegistrar.class,
     org.opentmf.client.starter.reactive.ReactiveLogbookAutoConfiguration.class,
     org.opentmf.client.starter.rest.RestClientRegistrar.class,
-    org.opentmf.client.starter.rest.ApacheRestTemplateFactory.class,
-    org.opentmf.client.starter.rest.JdkRestTemplateFactory.class,
+    org.opentmf.client.starter.rest.ApacheRestClientFactory.class,
+    org.opentmf.client.starter.rest.JdkRestClientFactory.class,
     org.opentmf.client.starter.rest.RestLogbookAutoConfiguration.class
 })
 public class OpentmfHttpClientsAutoConfiguration {

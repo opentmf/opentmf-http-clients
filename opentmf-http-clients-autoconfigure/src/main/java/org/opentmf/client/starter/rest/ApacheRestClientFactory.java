@@ -28,11 +28,11 @@ import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnClass(name = "org.apache.hc.client5.http.impl.classic.CloseableHttpClient")
 @Slf4j
-public class ApacheRestTemplateFactory extends AbstractRestTemplateFactory {
+public class ApacheRestClientFactory extends AbstractRestClientFactory {
 
   private final ApachePoolMeters poolMeters;
 
-  public ApacheRestTemplateFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider,
+  public ApacheRestClientFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider,
       ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider,
       ObjectProvider<ApachePoolMeters> poolMetersProvider,
       ObjectProvider<ObservationRegistry> observationRegistryProvider,

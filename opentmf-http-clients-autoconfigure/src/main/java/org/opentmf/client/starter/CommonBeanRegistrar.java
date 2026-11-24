@@ -42,7 +42,8 @@ public class CommonBeanRegistrar {
     } else {
       if (restRegistrar == null) {
         var msg = "Client '" + clientId + "' requires client-type: " + effectiveType
-            + ", but RestTemplate is not available. "
+            + ", but the synchronous clients (opentmf-http-clients-rest) are not on the "
+            + "classpath. "
             + "Add opentmf-http-clients-starter-rest to your classpath.";
         log.error(msg);
         throw new IllegalStateException(msg);

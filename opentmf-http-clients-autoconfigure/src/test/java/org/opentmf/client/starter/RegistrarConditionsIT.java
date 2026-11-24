@@ -44,13 +44,30 @@ class RegistrarConditionsIT {
         .run(context -> {
           assertThat(context).hasNotFailed();
           assertThat(context).doesNotHaveBean(ReactiveClientRegistrar.class);
-          assertThat(context).hasBean("catalogRestTemplate");
           assertThat(context).hasBean("catalogRestClient");
+          assertThat(context).doesNotHaveBean("catalogRestTemplate");
+        });
+  }
+
+  /**
+   * Spring Framework 8.0 removes {@code RestTemplate}: the synchronous clients are conditioned on
+   * {@code RestClient} and the rest module, so they boot without it.
+   */
+  @Test
+  void withoutSpringsRestTemplateClass_theSynchronousClientsBoot() {
+    runner
+        .withUserConfiguration(WebClientOnlyInfra.class)
+        .withClassLoader(new FilteredClassLoader("org.springframework.web.client.RestTemplate"))
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          assertThat(context).hasSingleBean(RestClientRegistrar.class);
+          assertThat(context).hasBean("catalogRestClient");
+          assertThat(context).hasBean("catalogTokenService");
         });
   }
 
   @Test
-  void restTemplateOnClasspath_withoutTheRestModule_bootsWithReactiveClientsOnly() {
+  void restClientOnClasspath_withoutTheRestModule_bootsWithReactiveClientsOnly() {
     runner
         .withUserConfiguration(WebClientOnlyInfra.class)
         .withPropertyValues("opentmf.client-type=netty")

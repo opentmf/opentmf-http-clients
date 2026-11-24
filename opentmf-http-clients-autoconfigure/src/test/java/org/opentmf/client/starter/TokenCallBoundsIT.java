@@ -233,7 +233,7 @@ class TokenCallBoundsIT {
 
   @ParameterizedTest
   @ValueSource(strings = {"jdk", "apache"})
-  void tokenNumRetriesOnly_theRegistrarWithoutTheRestTemplate_stillBuildsTheTokenService(
+  void tokenNumRetriesOnly_theRegistrarWithoutThePipeline_stillBuildsTheTokenService(
       String type) {
     unavailableIdentityProvider();
     contextRunner.withPropertyValues(slowBackendClient(type, "bearer-auth.num-retries=0"))
@@ -252,7 +252,7 @@ class TokenCallBoundsIT {
 
   @ParameterizedTest
   @ValueSource(strings = {"jdk", "apache"})
-  void tokenTimeoutSet_theRegistrarWithoutTheRestTemplate_failsByName(String type) {
+  void tokenTimeoutSet_theRegistrarWithoutThePipeline_failsByName(String type) {
     contextRunner
         .withPropertyValues(slowBackendClient(type, "bearer-auth.response-timeout=200ms"))
         .run(context -> {
@@ -265,7 +265,7 @@ class TokenCallBoundsIT {
               properties)))
               .isInstanceOf(IllegalStateException.class)
               .hasMessageContaining("'backend'")
-              .hasMessageContaining("createTokenService(clientId, restTemplate, restClient");
+              .hasMessageContaining("createTokenService(clientId, pipeline)");
         });
   }
 }

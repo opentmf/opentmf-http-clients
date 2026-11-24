@@ -88,7 +88,8 @@ class BearerAuthTokenUrlRequiredTest {
         .withPropertyValues(PREFIX + "base-url=http://backend")
         .run(context -> {
           var registry = context.getBean(HttpClientRegistry.class);
-          assertThatThrownBy(() -> registry.getOrCreate("dyn", ClientType.JDK, properties))
+          assertThatThrownBy(() ->
+              registry.getOrCreateRestClient("dyn", ClientType.JDK, properties))
               .isInstanceOf(IllegalStateException.class)
               .hasMessageStartingWith("Client 'dyn' has bearer-auth but no bearer-auth.token-url");
           assertThatThrownBy(() -> registry.getOrCreateReactive("dynReactive", properties))

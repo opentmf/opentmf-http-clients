@@ -8,7 +8,6 @@ import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -19,14 +18,13 @@ import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.common.model.PeerTextInMessage;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.ClientHttpResponse;
 
 /**
- * The handlers built from a client's {@link ClientProperties} follow both its
+ * The status handler built from a client's {@link ClientProperties} follows both its
  * {@code peer-text-in-message} and its {@code peer-text-cap-length}; unset, they give the message
  * of every released version. A length outside the bounds is refused when the handler is built.
  */
@@ -41,9 +39,6 @@ class PeerTextCapLengthHandlersTest {
     void handle(ClientProperties properties, ClientHttpResponse response) throws IOException;
   }
 
-  private static final Handler REST_TEMPLATE = (properties, response) ->
-      new OpenTmfResponseErrorHandler(properties)
-          .handleError(URI.create("http://peer/x"), HttpMethod.GET, response);
   private static final Handler REST_CLIENT = (properties, response) ->
       OpenTmfRestClientStatusHandler.errorHandler(properties)
           .handle(mock(HttpRequest.class), response);
@@ -61,8 +56,7 @@ class PeerTextCapLengthHandlersTest {
 
   static Stream<Arguments> cells() {
     var cells = Stream.<Arguments>builder();
-    for (var entry : new Object[][] {{"RestTemplate", REST_TEMPLATE},
-        {"RestClient", REST_CLIENT}}) {
+    for (var entry : new Object[][] {{"RestClient", REST_CLIENT}}) {
       String name = (String) entry[0];
       Handler handler = (Handler) entry[1];
       cells.add(Arguments.of(name + " unset json", handler, properties(null, null), JSON,
@@ -101,9 +95,6 @@ class PeerTextCapLengthHandlersTest {
   @Test
   void aLengthOutsideTheBounds_isRefusedWhenTheHandlerIsBuilt() {
     var tooShort = properties(PeerTextInMessage.CAPPED, 99);
-    assertThatIllegalArgumentException()
-        .isThrownBy(() -> new OpenTmfResponseErrorHandler(tooShort))
-        .withMessageContaining("peer-text-cap-length");
     assertThatIllegalArgumentException()
         .isThrownBy(() -> OpenTmfRestClientStatusHandler.errorHandler(tooShort))
         .withMessageContaining("peer-text-cap-length");

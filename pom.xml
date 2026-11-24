@@ -4,7 +4,7 @@
   <groupId>org.opentmf.client</groupId>
   <artifactId>opentmf-http-clients</artifactId>
   <name>opentmf-http-clients</name>
-  <version>2.6.0-SNAPSHOT</version>
+  <version>3.0.0-SNAPSHOT</version>
 
   <packaging>pom</packaging>
   <modules>
@@ -21,7 +21,7 @@
 
   <description>
     General purpose HTTP client libraries with cached token support.
-    Supports both reactive (WebClient) and synchronous (RestTemplate) clients
+    Supports both reactive (WebClient) and synchronous (RestClient) clients
     with pluggable HTTP implementations.
   </description>
 

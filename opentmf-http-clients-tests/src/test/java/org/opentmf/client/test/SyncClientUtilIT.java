@@ -17,21 +17,25 @@ import org.opentmf.client.bearer.exception.BearerTokenException;
 import org.opentmf.client.common.exception.OpenTmfClientNotFoundException;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.client.common.util.HttpClientUtil;
-import org.opentmf.client.rest.util.OpenTmfResponseErrorHandler;
+import org.opentmf.client.rest.util.OpenTmfRestClientStatusHandler;
 import org.opentmf.client.rest.util.SyncClientUtil;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClientResponseException;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 
 class SyncClientUtilIT {
 
   private static final String API_PATH = "/api/catalog";
   private static final Duration RETRY_WAIT = Duration.ofMillis(10);
 
-  private final RestTemplate restTemplate = new RestTemplate();
+  /** A plain client on the request factory a plain {@code RestTemplate} used. */
+  private final RestClient restClient = RestClient.builder()
+      .requestFactory(new SimpleClientHttpRequestFactory())
+      .build();
 
   @BeforeEach
   void setUp() {
@@ -45,7 +49,7 @@ class SyncClientUtilIT {
     get(API_PATH, 1, "{\"error\":\"not found\"}", HttpStatus.NOT_FOUND);
 
     try {
-      restTemplate.getForObject(BASE_URL + API_PATH, String.class);
+      restClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class);
       fail("Expected RestClientResponseException");
     } catch (RestClientResponseException thrown) {
       var ex = SyncClientUtil.handleError(thrown, BearerTokenException.class);
@@ -61,7 +65,7 @@ class SyncClientUtilIT {
     get(API_PATH, 1, "", HttpStatus.INTERNAL_SERVER_ERROR);
 
     try {
-      restTemplate.getForObject(BASE_URL + API_PATH, String.class);
+      restClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class);
       fail("Expected RestClientResponseException");
     } catch (RestClientResponseException thrown) {
       var ex = SyncClientUtil.handleError(thrown, OpenTmfClientResponseException.class);
@@ -77,7 +81,7 @@ class SyncClientUtilIT {
     get(API_PATH, 1, "unavailable", HttpStatus.SERVICE_UNAVAILABLE);
 
     try {
-      restTemplate.getForObject(BASE_URL + API_PATH, String.class);
+      restClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class);
       fail("Expected HttpServerErrorException");
     } catch (HttpServerErrorException thrown) {
       assertThat(SyncClientUtil.shouldRetryOn(thrown)).isTrue();
@@ -89,7 +93,7 @@ class SyncClientUtilIT {
     get(API_PATH, 1, "bad request", HttpStatus.BAD_REQUEST);
 
     try {
-      restTemplate.getForObject(BASE_URL + API_PATH, String.class);
+      restClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class);
       fail("Expected HttpClientErrorException");
     } catch (HttpClientErrorException thrown) {
       assertThat(SyncClientUtil.shouldRetryOn(thrown)).isFalse();
@@ -138,7 +142,7 @@ class SyncClientUtilIT {
     get(API_PATH, 1, "\"ok\"", HttpStatus.OK);
 
     String result = SyncClientUtil.executeWithRetry(
-        () -> restTemplate.getForObject(BASE_URL + API_PATH, String.class),
+        () -> restClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class),
         3, RETRY_WAIT);
 
     assertThat(result).isEqualTo("\"ok\"");
@@ -150,7 +154,7 @@ class SyncClientUtilIT {
     get(API_PATH, 1, "\"recovered\"", HttpStatus.OK);
 
     String result = SyncClientUtil.executeWithRetry(
-        () -> restTemplate.getForObject(BASE_URL + API_PATH, String.class),
+        () -> restClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class),
         3, RETRY_WAIT);
 
     assertThat(result).isEqualTo("\"recovered\"");
@@ -162,7 +166,7 @@ class SyncClientUtilIT {
 
     assertThatThrownBy(() ->
         SyncClientUtil.executeWithRetry(
-            () -> restTemplate.getForObject(BASE_URL + API_PATH, String.class),
+            () -> restClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class),
             3, RETRY_WAIT))
         .isInstanceOf(HttpClientErrorException.class)
         .satisfies(ex -> assertThat(((HttpClientErrorException) ex).getStatusCode())
@@ -175,7 +179,7 @@ class SyncClientUtilIT {
 
     assertThatThrownBy(() ->
         SyncClientUtil.executeWithRetry(
-            () -> restTemplate.getForObject(BASE_URL + API_PATH, String.class),
+            () -> restClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class),
             3, RETRY_WAIT))
         .isInstanceOf(HttpServerErrorException.class)
         .satisfies(ex -> assertThat(((HttpServerErrorException) ex).getStatusCode())
@@ -188,7 +192,7 @@ class SyncClientUtilIT {
     get(API_PATH, 1, "\"ok\"", HttpStatus.OK);
 
     String result = SyncClientUtil.executeWithRetry(
-        () -> restTemplate.getForObject(BASE_URL + API_PATH, String.class),
+        () -> restClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class),
         2, RETRY_WAIT, 0.5);
 
     assertThat(result).isEqualTo("\"ok\"");
@@ -202,7 +206,7 @@ class SyncClientUtilIT {
     get(API_PATH, 1, "", HttpStatus.OK);
 
     assertThatCode(() -> SyncClientUtil.executeWithRetry(
-        () -> restTemplate.getForObject(BASE_URL + API_PATH, String.class),
+        () -> restClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class),
         2, RETRY_WAIT))
         .doesNotThrowAnyException();
   }
@@ -213,7 +217,8 @@ class SyncClientUtilIT {
 
     assertThatThrownBy(() ->
         SyncClientUtil.executeWithRetry(
-            (Runnable) () -> restTemplate.getForObject(BASE_URL + API_PATH, String.class),
+            (Runnable) () -> restClient.get().uri(BASE_URL + API_PATH)
+                .retrieve().body(String.class),
             3, RETRY_WAIT))
         .isInstanceOf(HttpClientErrorException.class);
   }
@@ -228,7 +233,7 @@ class SyncClientUtilIT {
         SyncClientUtil.executeWithRetry(
             () -> {
               try {
-                return restTemplate.getForObject(BASE_URL + API_PATH, String.class);
+                return restClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class);
               } catch (RestClientResponseException ex) {
                 throw SyncClientUtil.handleError(ex, BearerTokenException.class);
               }
@@ -250,7 +255,7 @@ class SyncClientUtilIT {
     String result = SyncClientUtil.executeWithRetry(
         () -> {
           try {
-            return restTemplate.getForObject(BASE_URL + API_PATH, String.class);
+            return restClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class);
           } catch (RestClientResponseException ex) {
             throw SyncClientUtil.handleError(ex, BearerTokenException.class);
           }
@@ -260,22 +265,19 @@ class SyncClientUtilIT {
     assertThat(result).isEqualTo("\"success\"");
   }
 
-  // --- Auto-wrapping via OpenTmfResponseErrorHandler ---
+  // --- Auto-wrapping via OpenTmfRestClientStatusHandler ---
 
-  private final RestTemplate autoWrappedRestTemplate = createAutoWrappedRestTemplate();
-
-  private static RestTemplate createAutoWrappedRestTemplate() {
-    var rt = new RestTemplate();
-    rt.setErrorHandler(new OpenTmfResponseErrorHandler());
-    return rt;
-  }
+  private final RestClient autoWrappedRestClient = RestClient.builder()
+      .requestFactory(new SimpleClientHttpRequestFactory())
+      .defaultStatusHandler(HttpStatusCode::isError, OpenTmfRestClientStatusHandler.errorHandler())
+      .build();
 
   @Test
   void autoWrapping_404_throwsOpenTmfClientNotFoundException() {
     get(API_PATH, 1, "{\"message\":\"not found\"}", HttpStatus.NOT_FOUND);
 
     assertThatThrownBy(() ->
-        autoWrappedRestTemplate.getForObject(BASE_URL + API_PATH, String.class))
+        autoWrappedRestClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class))
         .isInstanceOf(OpenTmfClientNotFoundException.class)
         .satisfies(ex -> {
           var nfe = (OpenTmfClientNotFoundException) ex;
@@ -290,7 +292,7 @@ class SyncClientUtilIT {
     get(API_PATH, 1, "{\"error\":\"internal\"}", HttpStatus.INTERNAL_SERVER_ERROR);
 
     assertThatThrownBy(() ->
-        autoWrappedRestTemplate.getForObject(BASE_URL + API_PATH, String.class))
+        autoWrappedRestClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class))
         .isInstanceOf(OpenTmfClientResponseException.class)
         .isNotInstanceOf(OpenTmfClientNotFoundException.class)
         .satisfies(ex -> {
@@ -305,7 +307,7 @@ class SyncClientUtilIT {
     get(API_PATH, 1, "", HttpStatus.BAD_REQUEST);
 
     assertThatThrownBy(() ->
-        autoWrappedRestTemplate.getForObject(BASE_URL + API_PATH, String.class))
+        autoWrappedRestClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class))
         .isInstanceOf(OpenTmfClientResponseException.class)
         .satisfies(ex -> {
           var oex = (OpenTmfClientResponseException) ex;
@@ -321,7 +323,7 @@ class SyncClientUtilIT {
     get(API_PATH, 1, "\"ok\"", HttpStatus.OK);
 
     String result = SyncClientUtil.executeWithRetry(
-        () -> autoWrappedRestTemplate.getForObject(BASE_URL + API_PATH, String.class),
+        () -> autoWrappedRestClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class),
         3, RETRY_WAIT);
 
     assertThat(result).isEqualTo("\"ok\"");
@@ -334,7 +336,7 @@ class SyncClientUtilIT {
     get(API_PATH, 1, "{\"message\":\"no such resource\"}", HttpStatus.NOT_FOUND);
 
     Optional<String> result = SyncClientUtil.emptyOn404(
-        () -> autoWrappedRestTemplate.getForObject(BASE_URL + API_PATH, String.class));
+        () -> autoWrappedRestClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class));
 
     assertThat(result).isEmpty();
   }
@@ -344,7 +346,7 @@ class SyncClientUtilIT {
     get(API_PATH, 1, "\"found\"", HttpStatus.OK);
 
     Optional<String> result = SyncClientUtil.emptyOn404(
-        () -> autoWrappedRestTemplate.getForObject(BASE_URL + API_PATH, String.class));
+        () -> autoWrappedRestClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class));
 
     assertThat(result).contains("\"found\"");
   }
@@ -355,7 +357,8 @@ class SyncClientUtilIT {
 
     assertThatThrownBy(() ->
         SyncClientUtil.emptyOn404(
-            () -> autoWrappedRestTemplate.getForObject(BASE_URL + API_PATH, String.class)))
+            () -> autoWrappedRestClient.get().uri(BASE_URL + API_PATH)
+                .retrieve().body(String.class)))
         .isInstanceOf(OpenTmfClientResponseException.class);
   }
 
@@ -366,7 +369,7 @@ class SyncClientUtilIT {
     get(API_PATH, 1, "gone", HttpStatus.GONE);
 
     Optional<String> result = SyncClientUtil.emptyOn(
-        () -> autoWrappedRestTemplate.getForObject(BASE_URL + API_PATH, String.class),
+        () -> autoWrappedRestClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class),
         HttpStatus.NOT_FOUND, HttpStatus.GONE);
 
     assertThat(result).isEmpty();
@@ -378,7 +381,8 @@ class SyncClientUtilIT {
 
     assertThatThrownBy(() ->
         SyncClientUtil.emptyOn(
-            () -> autoWrappedRestTemplate.getForObject(BASE_URL + API_PATH, String.class),
+            () -> autoWrappedRestClient.get().uri(BASE_URL + API_PATH)
+                .retrieve().body(String.class),
             HttpStatus.NOT_FOUND, HttpStatus.GONE))
         .isInstanceOf(OpenTmfClientResponseException.class);
   }
@@ -390,7 +394,7 @@ class SyncClientUtilIT {
     get(API_PATH, 1, "{\"error\":\"auth failed\"}", HttpStatus.UNAUTHORIZED);
 
     var original = catchThrowableOfType(OpenTmfClientResponseException.class,
-        () -> autoWrappedRestTemplate.getForObject(BASE_URL + API_PATH, String.class));
+        () -> autoWrappedRestClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class));
 
     BearerTokenException remapped = HttpClientUtil.remap(original, BearerTokenException.class);
     assertThat(remapped.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);

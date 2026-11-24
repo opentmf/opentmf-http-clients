@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.opentmf.client.common.model.ClientProperties;
-import org.opentmf.client.rest.util.OpenTmfResponseErrorHandler;
 import org.opentmf.client.rest.util.OpenTmfRestClientStatusHandler;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.client.ClientHttpRequestFactory;
@@ -14,20 +13,18 @@ import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.HttpMessageConverters;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.DefaultUriBuilderFactory;
 
 /**
  * Everything the library builds for one synchronous client, once: the backend's request factory
  * (its HTTP client with mTLS, pool and time limits), the ordered interceptors, the application's
  * {@link ObservationRegistry}, the base URL and the error handling of the client's settings. Its
- * {@link #restClient()} is built from these directly; {@link #restTemplate()} applies the same
- * parts to a {@code RestTemplate}. Both share the one request factory, so the one connection
- * pool.
+ * {@link #restClient()} is built from these once; the client's token calls share its request
+ * factory, so the one connection pool.
  *
  * <p>Built by the library's JDK and Apache factories; an application does not build one.</p>
  *
- * @since 2.6.0
+ * @since 3.0.0
  */
 public final class SyncClientPipeline {
 
@@ -35,7 +32,6 @@ public final class SyncClientPipeline {
   private final List<ClientHttpRequestInterceptor> interceptors;
   private final @Nullable ObservationRegistry observationRegistry;
   private final ClientProperties properties;
-  private final List<HttpMessageConverter<?>> messageConverters;
   private final RestClient restClient;
 
   /**
@@ -49,7 +45,6 @@ public final class SyncClientPipeline {
     this.interceptors = List.copyOf(interceptors);
     this.observationRegistry = observationRegistry;
     this.properties = properties;
-    this.messageConverters = defaultMessageConverters();
     this.restClient = buildRestClient(
         OpenTmfRestClientStatusHandler.errorHandler(properties));
   }
@@ -80,41 +75,18 @@ public final class SyncClientPipeline {
   }
 
   /**
-   * A new {@code RestTemplate} over the same parts as {@link #restClient()}: the same request
-   * factory, interceptors and message converters, the same observation registry and base URL, and
-   * {@link OpenTmfResponseErrorHandler}, which throws the same exceptions.
-   *
-   * <p>Since 2.6.0: Spring marks {@code RestTemplate} for removal; use {@link #restClient()}. This
-   * one stays supported.</p>
-   */
-  public RestTemplate restTemplate() {
-    var restTemplate = new RestTemplate(messageConverters);
-    restTemplate.setRequestFactory(requestFactory);
-    restTemplate.setErrorHandler(new OpenTmfResponseErrorHandler(properties));
-    if (observationRegistry != null) {
-      restTemplate.setObservationRegistry(observationRegistry);
-    }
-    restTemplate.getInterceptors().addAll(interceptors);
-    if (StringUtils.hasText(properties.getBaseUrl())) {
-      restTemplate.setUriTemplateHandler(new DefaultUriBuilderFactory(properties.getBaseUrl()));
-    }
-    return restTemplate;
-  }
-
-  /**
    * The {@code RestClient} carries the pipeline's converters, not Spring's defaults: a client
    * derived from it ({@code mutate()...build()}, as a consumer does per call to add a credential)
    * then reuses them. Without them every such build detects Spring's default set anew, which
    * constructs the classpath's converters (the JAXB one scans jars), tens of milliseconds each. The
-   * converters are the {@code RestTemplate}'s, the same instances in the same order, and Spring
-   * appends one form or multipart converter: the layout of a client built with
-   * {@code RestClient.builder(restTemplate)}.
+   * converters are Spring's default client converters, assembled once per client, and Spring
+   * appends one form or multipart converter: the layout the 2.5 clients had.
    *
    * <p>The configurer turns the defaults off itself: Spring Framework 7.0 skips them when a
    * configurer is set, but 7.1 registers them first and applies the configurer on top.</p>
    */
   private RestClient buildRestClient(RestClient.ResponseSpec.ErrorHandler errorHandler) {
-    var converters = messageConverters;
+    var converters = defaultMessageConverters();
     var builder = RestClient.builder()
         .requestFactory(requestFactory)
         .configureMessageConverters(converterBuilder -> {
@@ -132,7 +104,7 @@ public final class SyncClientPipeline {
     return builder.build();
   }
 
-  /** Spring's default client converters, as {@code new RestTemplate()} has them, assembled once. */
+  /** Spring's default client converters, in Spring's order. */
   private static List<HttpMessageConverter<?>> defaultMessageConverters() {
     var converters = new ArrayList<HttpMessageConverter<?>>();
     HttpMessageConverters.forClient().registerDefaults().build().forEach(converters::add);

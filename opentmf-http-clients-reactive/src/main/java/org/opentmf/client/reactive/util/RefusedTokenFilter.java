@@ -18,7 +18,7 @@ import reactor.core.publisher.Mono;
  * without this filter, and nothing is retried. Until a token service is bound, a refusal is
  * ignored.
  *
- * @since 2.6.0
+ * @since 3.0.0
  */
 public final class RefusedTokenFilter implements ExchangeFilterFunction {
 

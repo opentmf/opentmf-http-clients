@@ -36,14 +36,12 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 
 /**
  * The application's {@link OutboundInterceptorContribution} beans run FIRST — in their order,
  * ahead of the library's resilience, gzip, fixed-headers and Logbook interceptors — on every
- * library-built sync client: the {@code <id>RestTemplate}, the {@code <id>RestClient}, the
- * bearer-token call of {@code <id>TokenService}, and a dynamic client from
+ * library-built sync client: the {@code <id>RestClient}, the bearer-token call of {@code <id>TokenService}, and a dynamic client from
  * {@link HttpClientRegistry}. Without a contribution bean the clients are built as before.
  */
 class OutboundInterceptorContributionIT {
@@ -151,7 +149,7 @@ class OutboundInterceptorContributionIT {
 
   @ParameterizedTest
   @ValueSource(strings = {"jdk", "apache"})
-  void contributionsRunFirst_onRestTemplate_restClient_andTokenCall(String clientType) {
+  void contributionsRunFirst_onTheRestClient_andTheTokenCall(String clientType) {
     catalogClient(clientType)
         .withUserConfiguration(RecordingContributions.class)
         .run(context -> {
@@ -159,21 +157,13 @@ class OutboundInterceptorContributionIT {
           var early = interceptorOf(context, "earlyContribution");
           var late = interceptorOf(context, "lateContribution");
 
-          var restTemplate = (RestTemplate) context.getBean("catalogRestTemplate");
-          assertThat(restTemplate.getInterceptors()).startsWith(early, late);
-          assertThat(restTemplate.getInterceptors().get(2))
-              .isInstanceOf(ResilienceClientHttpRequestInterceptor.class);
-          assertThat(restTemplate.getInterceptors()).last()
-              .isInstanceOf(BodyReadFailureGuard.class);
-          assertThat(restTemplate.getForObject("/api/hello", String.class)).isEqualTo("hello");
-          assertThat(SEEN).containsExactly(
-              "early /api/hello X-Custom=null", "late /api/hello X-Custom=null");
-
-          SEEN.clear();
           var restClient = (RestClient) context.getBean("catalogRestClient");
           var restClientChain = new ArrayList<ClientHttpRequestInterceptor>();
           restClient.mutate().requestInterceptors(restClientChain::addAll);
           assertThat(restClientChain).startsWith(early, late);
+          assertThat(restClientChain.get(2))
+              .isInstanceOf(ResilienceClientHttpRequestInterceptor.class);
+          assertThat(restClientChain).last().isInstanceOf(BodyReadFailureGuard.class);
           assertThat(restClient.get().uri("/api/hello").retrieve().body(String.class))
               .isEqualTo("hello");
           assertThat(SEEN).containsExactly(
@@ -193,12 +183,9 @@ class OutboundInterceptorContributionIT {
         .withUserConfiguration(RejectingContribution.class)
         .run(context -> {
           assertThat(context).hasNotFailed();
-          var restTemplate = (RestTemplate) context.getBean("catalogRestTemplate");
           var restClient = (RestClient) context.getBean("catalogRestClient");
           var tokenService = (SyncTokenService) context.getBean("catalogTokenService");
 
-          assertThatThrownBy(() -> restTemplate.getForObject("/api/hello", String.class))
-              .isInstanceOf(IllegalStateException.class).hasMessage("outbound HTTP refused");
           var response = restClient.get().uri("/api/hello").retrieve(); // lazy: no exchange yet
           assertThatThrownBy(() -> response.body(String.class))
               .isInstanceOf(IllegalStateException.class).hasMessage("outbound HTTP refused");
@@ -236,7 +223,7 @@ class OutboundInterceptorContributionIT {
           properties.setBaseUrl(baseUrl);
           properties.setFixedHeaders(Map.of("X-Custom", "myvalue"));
           var client = context.getBean(HttpClientRegistry.class)
-              .getOrCreate("dynamic", ClientType.JDK, properties);
+              .getOrCreateRestClient("dynamic", ClientType.JDK, properties);
 
           assertThat(client.restClient().get().uri("/api/hello").retrieve().body(String.class))
               .isEqualTo("hello");
@@ -297,7 +284,9 @@ class OutboundInterceptorContributionIT {
   void withoutContributionBeans_theLibrarysChainIsUnchanged() {
     catalogClient("jdk").run(context -> {
       assertThat(context).hasNotFailed();
-      var interceptors = ((RestTemplate) context.getBean("catalogRestTemplate")).getInterceptors();
+      var interceptors = new ArrayList<ClientHttpRequestInterceptor>();
+      ((RestClient) context.getBean("catalogRestClient")).mutate()
+          .requestInterceptors(interceptors::addAll);
       // resilience, gzip, fixed headers, the bearer client's refused-token hook, then Logbook
       // (behind its body-read guard), which stays innermost
       assertThat(interceptors).hasSize(5);
@@ -305,17 +294,12 @@ class OutboundInterceptorContributionIT {
       assertThat(interceptors.get(1)).isSameAs(GzipClientHttpRequestInterceptor.instance());
       assertThat(interceptors.get(3)).isInstanceOf(RefusedTokenInterceptor.class);
       assertThat(interceptors.get(4)).isInstanceOf(BodyReadFailureGuard.class);
-
-      var restClientChain = new ArrayList<ClientHttpRequestInterceptor>();
-      ((RestClient) context.getBean("catalogRestClient")).mutate()
-          .requestInterceptors(restClientChain::addAll);
-      assertThat(restClientChain).containsExactlyElementsOf(interceptors);
     });
   }
 
   @ParameterizedTest
   @ValueSource(strings = {"jdk", "apache"})
-  void theRegistrarsRestTemplate_carriesTheRefusedTokenHook_onlyWhenTheClientMintsItsTokens(
+  void theRegistrarsPipeline_carriesTheRefusedTokenHook_onlyWhenTheClientMintsItsTokens(
       String clientType) {
     contextRunner
         .withPropertyValues("opentmf.http-clients.unused.base-url=http://localhost:9999")
@@ -327,8 +311,7 @@ class OutboundInterceptorContributionIT {
           var minting = new ClientProperties();
           minting.setBaseUrl(baseUrl);
           minting.setBearerAuth(new BearerAuthConfig());
-          var interceptors = registrar.createRestTemplate("minting", type, minting)
-              .getInterceptors();
+          var interceptors = registrar.createPipeline("minting", type, minting).interceptors();
           // just ahead of Logbook (behind its body-read guard), which stays innermost
           assertThat(interceptors).filteredOn(RefusedTokenInterceptor.class::isInstance)
               .hasSize(1);
@@ -340,12 +323,12 @@ class OutboundInterceptorContributionIT {
           mocked.setBaseUrl(baseUrl);
           mocked.setBearerAuth(new BearerAuthConfig());
           mocked.getBearerAuth().setUseMock(true);
-          assertThat(registrar.createRestTemplate("mocked", type, mocked).getInterceptors())
+          assertThat(registrar.createPipeline("mocked", type, mocked).interceptors())
               .noneMatch(RefusedTokenInterceptor.class::isInstance);
 
           var plain = new ClientProperties();
           plain.setBaseUrl(baseUrl);
-          assertThat(registrar.createRestTemplate("plain", type, plain).getInterceptors())
+          assertThat(registrar.createPipeline("plain", type, plain).interceptors())
               .noneMatch(RefusedTokenInterceptor.class::isInstance);
         });
   }

@@ -17,7 +17,7 @@ import org.springframework.web.client.RestClient;
  * its cache. The answer is returned untouched: the refused call fails exactly as it would without
  * this interceptor, and nothing is retried. Until a token service is bound, a refusal is ignored.
  *
- * @since 2.6.0
+ * @since 3.0.0
  */
 public final class RefusedTokenInterceptor implements ClientHttpRequestInterceptor {
 

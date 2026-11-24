@@ -46,7 +46,7 @@ final class TokenRequestFactories {
       return null;
     }
     if (clientFactory instanceof HttpComponentsClientHttpRequestFactory apache) {
-      var factory = ApacheRestTemplateFactory.requestFactory(apache.getHttpClient(), token);
+      var factory = ApacheRestClientFactory.requestFactory(apache.getHttpClient(), token);
       factory.setConnectionRequestTimeout(token.getRequestTimeout());
       factory.setReadTimeout(token.getResponseTimeout());
       return factory;
@@ -58,7 +58,7 @@ final class TokenRequestFactories {
         jdk.closeAlso(httpClient);
       }
       var factory = new JdkClientHttpRequestFactory(httpClient);
-      factory.setReadTimeout(JdkRestTemplateFactory.readTimeout(token));
+      factory.setReadTimeout(JdkRestClientFactory.readTimeout(token));
       return factory;
     }
     throw new IllegalStateException("bearer-auth.request-timeout / bearer-auth.response-timeout "

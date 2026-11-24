@@ -235,7 +235,8 @@ class TokenCallHeadersIT {
           assertThat(context).hasNotFailed();
           var registry = context.getBean(HttpClientRegistry.class);
 
-          var sync = registry.getOrCreate("dynSync", ClientType.JDK, dynamicProperties("sync"));
+          var sync = registry.getOrCreateRestClient("dynSync", ClientType.JDK,
+              dynamicProperties("sync"));
           sync.tokenService().getToken();
           var reactive = registry.getOrCreateReactive("dynReactive",
               dynamicProperties("reactive"));

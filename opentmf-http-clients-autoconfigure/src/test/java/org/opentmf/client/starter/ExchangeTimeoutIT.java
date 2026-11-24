@@ -36,7 +36,6 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
@@ -310,32 +309,6 @@ class ExchangeTimeoutIT {
 
       assertThat(outcome.failure()).as("the call").isNull();
       assertThat(outcome.body()).isEqualTo("abcdefgh".getBytes(StandardCharsets.US_ASCII));
-    });
-
-    var responseLines = output.getAll().substring(from).lines()
-        .filter(line -> line.contains("org.zalando.logbook"))
-        .filter(line -> line.contains("\"type\":\"response\""))
-        .toList();
-    assertThat(responseLines).hasSize(1);
-    assertThat(responseLines.get(0)).contains("abcdefgh").contains("\"status\":200");
-  }
-
-  /**
-   * The same through the {@code RestTemplate} bean, which shares the {@code RestClient}'s request
-   * factory and interceptors but not the client object itself.
-   */
-  @ParameterizedTest
-  @ValueSource(strings = {"jdk", "apache"})
-  void aCompleteBody_throughTheRestTemplate_isUnchanged_andLoggedOnce(String clientType,
-      CapturedOutput output) {
-    peer.behave(Behaviour.COMPLETE);
-    int from = output.getAll().length();
-
-    runner(clientType, true, RESPONSE_TIMEOUT_MS, 3000).run(context -> {
-      var body = ((RestTemplate) context.getBean("backendRestTemplate"))
-          .getForObject("/download", byte[].class);
-
-      assertThat(body).isEqualTo("abcdefgh".getBytes(StandardCharsets.US_ASCII));
     });
 
     var responseLines = output.getAll().substring(from).lines()
