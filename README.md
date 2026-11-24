@@ -411,6 +411,33 @@ Spring Framework 7.1 marks `RestTemplate` and its `ResponseErrorHandler` for rem
 
 A single client produces **either** reactive beans **or** REST beans, never both. If you need both a `WebClient` and a `RestClient` for the same backend, declare two clients with different IDs (e.g. one with `client-type: netty` and one with `client-type: jdk`).
 
+### A client without authentication
+
+**`{clientId}TokenService` exists for every client, with or without auth.** It has done so since 2.0.0. For a client with neither `basic-auth` nor `bearer-auth`, it is a no-op:
+
+- **Type:** `NoOpSyncTokenService` (REST) or `NoOpTokenService` (reactive).
+- **`getTokenType()`:** returns `""`.
+- **`getToken()`:** returns `""` (reactive: `Mono.just("")`).
+
+So a test for the bean's presence (`containsBean`, `ObjectProvider.getIfAvailable()`) never means "no auth".
+
+**The library's `RestClient` and `WebClient` put no `Authorization` header on an API call, whatever the auth type.** The caller puts the token on the request (opentmf-api-clients does). To tell "no auth" from "auth", read the auth type of `{clientId}ClientProperties`:
+
+```java
+if (syncApiClientProperties.getAuthType() != AuthType.NONE) {   // BASIC or BEARER
+  headers.set(HttpHeaders.AUTHORIZATION,
+      syncApiTokenService.getTokenType() + " " + syncApiTokenService.getToken());
+}
+```
+
+**Do not write `getTokenType() + " " + getToken()` unconditionally.** For a client without auth that value is a single space. Measured on 3.0.0 (Spring Framework 7.1.0):
+
+| Transport | What happens |
+|---|---|
+| `jdk` | The request goes out with `Authorization:` and an empty value. |
+| `apache` | The request goes out with `Authorization:` and an empty value. |
+| `netty` | The call fails before anything is sent: `WebClientRequestException: Validation failed for header 'Authorization'`. |
+
 ### Application-scoped beans
 
 Independent of the per-client beans, the starter registers these singletons:
