@@ -24,7 +24,7 @@ import org.springframework.http.HttpStatusCode;
  * {@code null} and the message never quotes it, because a provider may echo the request form,
  * which can carry the client secret, a password or a refresh token. The message names the token
  * endpoint, the status and, when the body carries one, the OAuth 2.0 error code
- * (RFC 6749 §5.2, e.g. {@code invalid_client}), also available as {@link #getOauthError()}. The
+ * (RFC 6749 §5.2, e.g. {@code invalid_client}), also available as {@code getOauthError()}. The
  * status, the response headers and a parsed {@code Retry-After} are kept, so a retryable status
  * is retried exactly as any other.</p>
  */
