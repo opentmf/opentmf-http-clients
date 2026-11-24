@@ -25,7 +25,6 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.zalando.logbook.Logbook;
 import reactor.test.StepVerifier;
@@ -94,14 +93,11 @@ class AutoConfigurationIT {
             "opentmf.http-clients.catalog.base-url=http://localhost:9999")
         .run(context -> {
           assertThat(context).hasNotFailed();
-          assertThat(context.containsBean("catalogRestTemplate")).isTrue();
+          assertThat(context.containsBean("catalogRestTemplate")).isFalse();
           assertThat(context.containsBean("catalogRestClient")).isTrue();
           assertThat(context.containsBean("catalogTokenService")).isTrue();
           assertThat(context.containsBean("catalogClientProperties")).isTrue();
           assertThat(context.containsBean("opentmfHttpClientsStarter")).isTrue();
-
-          var restTemplate = (RestTemplate) context.getBean("catalogRestTemplate");
-          assertThat(restTemplate).isNotNull();
 
           var restClient = (RestClient) context.getBean("catalogRestClient");
           assertThat(restClient).isNotNull();
@@ -134,7 +130,6 @@ class AutoConfigurationIT {
             "opentmf.http-clients.svc.base-url=http://localhost:9999")
         .run(context -> {
           assertThat(context).hasNotFailed();
-          assertThat(context.containsBean("svcRestTemplate")).isTrue();
           assertThat(context.containsBean("svcRestClient")).isTrue();
           assertThat(context.containsBean("svcTokenService")).isTrue();
         });
@@ -150,9 +145,7 @@ class AutoConfigurationIT {
             "opentmf.http-clients.beta.client-type=apache")
         .run(context -> {
           assertThat(context).hasNotFailed();
-          assertThat(context.containsBean("alphaRestTemplate")).isTrue();
           assertThat(context.containsBean("alphaRestClient")).isTrue();
-          assertThat(context.containsBean("betaRestTemplate")).isTrue();
           assertThat(context.containsBean("betaRestClient")).isTrue();
         });
   }
@@ -166,7 +159,7 @@ class AutoConfigurationIT {
             "opentmf.http-clients.svc.client-type=apache")
         .run(context -> {
           assertThat(context).hasNotFailed();
-          assertThat(context.containsBean("svcRestTemplate")).isTrue();
+          assertThat(context.containsBean("svcRestClient")).isTrue();
         });
   }
 
@@ -194,7 +187,7 @@ class AutoConfigurationIT {
             "opentmf.http-clients.svc.base-url=http://localhost:9999")
         .run(context -> {
           assertThat(context).hasNotFailed();
-          assertThat(context.containsBean("svcRestTemplate")).isTrue();
+          assertThat(context.containsBean("svcRestClient")).isTrue();
         });
   }
 
@@ -375,7 +368,6 @@ class AutoConfigurationIT {
         assertThat(context.containsBean("svcWebClient")).isTrue();
         assertThat(context.containsBean("svcTokenService")).isTrue();
       } else {
-        assertThat(context.containsBean("svcRestTemplate")).isTrue();
         assertThat(context.containsBean("svcRestClient")).isTrue();
         assertThat(context.containsBean("svcTokenService")).isTrue();
       }

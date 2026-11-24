@@ -29,11 +29,7 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 
 /**
@@ -105,21 +101,6 @@ class RefusedTokenDropIT {
 
       assertThat(tokens.getToken()).isEqualTo("second");
       assertThat(callSync(restClient, tokens.getToken())).isEqualTo("ok");
-      assertTokenCalls(2);
-    });
-  }
-
-  @Test
-  void syncRestTemplate_aTokenRefusedAsInvalid_isDropped() {
-    refuse(401, INVALID_TOKEN);
-    contextRunner.withPropertyValues(bearerClient("catalog", "jdk")).run(context -> {
-      var tokens = (SyncTokenService) context.getBean("catalogTokenService");
-      var restTemplate = (RestTemplate) context.getBean("catalogRestTemplate");
-
-      var refusal = catchThrowable(() -> callTemplate(restTemplate, tokens.getToken()));
-      assertRefusedAsBefore(refusal, 401);
-
-      assertThat(tokens.getToken()).isEqualTo("second");
       assertTokenCalls(2);
     });
   }
@@ -199,7 +180,8 @@ class RefusedTokenDropIT {
     refuse(401, INVALID_TOKEN);
     contextRunner.withPropertyValues(STATIC_CLIENT).run(context -> {
       var registry = context.getBean(HttpClientRegistry.class);
-      var client = registry.getOrCreate("onedms", ClientType.valueOf(type), properties());
+      var client = registry.getOrCreateRestClient("onedms", ClientType.valueOf(type),
+          properties());
 
       var refusal = catchThrowable(
           () -> callSync(client.restClient(), client.tokenService().getToken()));
@@ -231,13 +213,6 @@ class RefusedTokenDropIT {
   private static String callSync(RestClient restClient, String token) {
     return restClient.get().uri("/orders").headers(h -> h.setBearerAuth(token))
         .retrieve().body(String.class);
-  }
-
-  private static String callTemplate(RestTemplate restTemplate, String token) {
-    var headers = new HttpHeaders();
-    headers.setBearerAuth(token);
-    return restTemplate.exchange("/orders", HttpMethod.GET, new HttpEntity<>(headers),
-        String.class).getBody();
   }
 
   private static String callReactive(WebClient webClient, String token) {

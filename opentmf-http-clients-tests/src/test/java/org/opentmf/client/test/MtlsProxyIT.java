@@ -120,10 +120,9 @@ class MtlsProxyIT {
         .verifyComplete();
   }
 
-  /** Both shapes of both sync backends: the RestTemplate and the RestClient bean. */
+  /** Both sync backends' RestClient bean. */
   @ParameterizedTest(name = "{0} {1}")
-  @CsvSource({"Jdk, RestTemplate", "Jdk, RestClient", "Apache, RestTemplate",
-      "Apache, RestClient"})
+  @CsvSource({"Jdk, RestClient", "Apache, RestClient"})
   void testRestClient_withMtlsAndProxy_httpsGetSucceeds(String backend, String shape) {
     var path = "/proxy-" + backend + "-" + shape + "-get";
     mockGet(path, backend + " proxy+mTLS OK");
@@ -133,8 +132,7 @@ class MtlsProxyIT {
   }
 
   @ParameterizedTest(name = "{0} {1}")
-  @CsvSource({"Jdk, RestTemplate", "Jdk, RestClient", "Apache, RestTemplate",
-      "Apache, RestClient"})
+  @CsvSource({"Jdk, RestClient", "Apache, RestClient"})
   void testRestClient_withMtlsAndProxy_httpsPostSucceeds(String backend, String shape) {
     var path = "/proxy-" + backend + "-" + shape + "-post";
     mockPost(path, backend + " proxy post OK");

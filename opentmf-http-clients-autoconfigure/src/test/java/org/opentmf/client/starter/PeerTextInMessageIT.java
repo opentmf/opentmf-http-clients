@@ -24,6 +24,7 @@ import org.mockserver.integration.ClientAndServer;
 import org.opentmf.client.common.exception.OpenTmfClientNotFoundException;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.client.common.model.ClientProperties;
+import org.opentmf.client.common.model.ClientType;
 import org.opentmf.client.common.model.PeerTextInMessage;
 import org.opentmf.client.starter.rest.RestClientRegistrar;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -31,15 +32,13 @@ import org.springframework.boot.test.context.assertj.AssertableApplicationContex
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.client.NoOpResponseErrorHandler;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 
 /**
  * {@code peer-text-in-message} decides how much of a peer's error text reaches the message of the
  * client exception, on every client type and through every client the library builds
- * ({@code RestTemplate} and {@code RestClient} for jdk and apache, {@code WebClient} for netty).
+ * ({@code RestClient} for jdk and apache, {@code WebClient} for netty).
  * Unset and {@code whole} give today's message, a field of any length taken whole;
  * {@code capped} cuts the peer's text at {@code ErrorBodyExtractor.MAX_BODY_LENGTH} characters;
  * {@code none} keeps the status and reason only. In every value the exception keeps the whole
@@ -158,10 +157,8 @@ class PeerTextInMessageIT {
       return List.of(catchThrowable(() -> webClient.get().uri(path).retrieve()
           .bodyToMono(String.class).block(Duration.ofSeconds(10))));
     }
-    var restTemplate = context.getBean("backendRestTemplate", RestTemplate.class);
     var restClient = context.getBean("backendRestClient", RestClient.class);
     return List.of(
-        catchThrowable(() -> restTemplate.getForObject(path, String.class)),
         catchThrowable(() -> restClient.get().uri(path).retrieve().body(String.class)));
   }
 
@@ -187,33 +184,31 @@ class PeerTextInMessageIT {
   }
 
   /**
-   * The registrar's {@code RestClient} status handler on its own (the {@code RestTemplate}'s
-   * handler passes every answer through): the overload taking the client's properties follows
-   * its value, the one without them keeps today's message.
+   * A client the registrar builds at runtime follows the value of the properties it is built
+   * from; unset, it keeps today's message.
    */
   @Test
-  void theRegistrarsRestClient_followsTheClientsValue_andTodaysWithoutIt() {
+  void theRegistrarsRestClient_followsThePropertiesItIsBuiltFrom() {
     contextRunner.withPropertyValues(client("jdk", "")).run(context -> {
       var registrar = context.getBean(RestClientRegistrar.class);
-      var restTemplate = new RestTemplate();
-      restTemplate.setErrorHandler(new NoOpResponseErrorHandler());
       var properties = new ClientProperties();
       properties.setPeerTextInMessage(PeerTextInMessage.NONE);
       var uri = baseUrl + "/backend/long-field";
 
-      var none = catchThrowable(() -> registrar.createRestClient(restTemplate, properties)
-          .get().uri(uri).retrieve().body(String.class));
+      var none = catchThrowable(() -> registrar.createRestClient("none", ClientType.JDK,
+          properties).get().uri(uri).retrieve().body(String.class));
       assertFailure(none, 400, NONE.longField(), LONG_FIELD_BODY, null);
 
       properties.setPeerTextInMessage(PeerTextInMessage.CAPPED);
       properties.setPeerTextCapLength(300);
-      var capped = catchThrowable(() -> registrar.createRestClient(restTemplate, properties)
-          .get().uri(uri).retrieve().body(String.class));
+      var capped = catchThrowable(() -> registrar.createRestClient("capped", ClientType.JDK,
+          properties).get().uri(uri).retrieve().body(String.class));
       assertFailure(capped, 400, BAD_REQUEST + ": " + LONG_DETAIL.substring(0, 300) + "...",
           LONG_FIELD_BODY, null);
 
-      var today = catchThrowable(() -> registrar.createRestClient(restTemplate)
-          .get().uri(uri).retrieve().body(String.class));
+      var unset = new ClientProperties();
+      var today = catchThrowable(() -> registrar.createRestClient("unset", ClientType.JDK,
+          unset).get().uri(uri).retrieve().body(String.class));
       assertFailure(today, 400, UNSET.longField(), LONG_FIELD_BODY, null);
     });
   }

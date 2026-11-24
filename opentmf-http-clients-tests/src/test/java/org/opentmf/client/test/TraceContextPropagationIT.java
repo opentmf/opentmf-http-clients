@@ -25,7 +25,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 /**
  * End-to-end verification that when the application publishes an {@link ObservationRegistry},
- * every library-built client — JDK and Apache {@code RestTemplate} and {@code RestClient},
+ * every library-built client — the JDK and Apache {@code RestClient},
  * and the reactive {@code WebClient} — carries W3C trace context
  * ({@code traceparent}) on outbound requests. The test registry's handler emulates
  * micrometer-tracing's propagating handler, so this proves the wiring without a tracer
@@ -44,10 +44,9 @@ class TraceContextPropagationIT {
     resetMockServer();
   }
 
-  /** Both shapes of both sync backends: the RestTemplate and the RestClient bean. */
+  /** Both sync backends' RestClient bean. */
   @ParameterizedTest(name = "{0}")
-  @ValueSource(strings = {"syncRetryAfterRestTemplate", "syncRetryAfterRestClient",
-      "apacheRetryRestTemplate", "apacheRetryRestClient"})
+  @ValueSource(strings = {"syncRetryAfterRestClient", "apacheRetryRestClient"})
   void syncClient_sendsTraceparent(String beanName) {
     assertTraceparentSent("/api/trace/" + beanName, path ->
         SyncShapes.get(context, beanName, BASE_URL + path));

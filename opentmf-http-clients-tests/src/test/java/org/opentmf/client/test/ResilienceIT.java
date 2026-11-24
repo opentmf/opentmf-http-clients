@@ -49,9 +49,9 @@ class ResilienceIT {
     resilienceRegistries.circuitBreaker("stormSync", new ResilienceProperties()).reset();
   }
 
-  /** Both shapes of the client: the RestTemplate and the RestClient bean. */
+  /** The client's RestClient bean. */
   @ParameterizedTest(name = "{0}")
-  @ValueSource(strings = {"stormSyncRestTemplate", "stormSyncRestClient"})
+  @ValueSource(strings = {"stormSyncRestClient"})
   void syncClient_503Storm_opensCircuit_failsFast_andRetryRefuses(String beanName) {
     get(API_PATH, 10, "unavailable", HttpStatus.SERVICE_UNAVAILABLE);
 

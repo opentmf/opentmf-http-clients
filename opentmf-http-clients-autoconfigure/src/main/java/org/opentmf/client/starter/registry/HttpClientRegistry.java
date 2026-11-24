@@ -20,21 +20,19 @@ import org.opentmf.client.rest.service.api.SyncTokenService;
 import org.opentmf.client.starter.ApachePoolMeters;
 import org.opentmf.client.starter.reactive.ReactiveClientRegistrar;
 import org.opentmf.client.starter.rest.RestClientRegistrar;
-import org.opentmf.client.starter.rest.SyncClientPipeline;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.netty.resources.ConnectionProvider;
 
 /**
  * Registry-style lifecycle API for clients built programmatically at runtime (e.g. from catalog
  * rows), complementing the create-once Spring beans of the static
- * {@code opentmf.http-clients.*} path. Supports hot-swap ({@link #replace}) and removal
- * ({@link #evict}); a retired client is closed only after a grace period, so requests already
- * in flight on it can finish.
+ * {@code opentmf.http-clients.*} path. Supports hot-swap ({@link #replaceRestClient},
+ * {@link #replaceReactive}) and removal ({@link #evict}); a retired client is closed only after a
+ * grace period, so requests already in flight on it can finish.
  *
  * <p>Close semantics per client type: Apache — graceful close of the pooled connection manager
  * (via the request factory's {@code DisposableBean}); JDK — guarded {@code AutoCloseable} close,
@@ -48,21 +46,10 @@ import reactor.netty.resources.ConnectionProvider;
 public class HttpClientRegistry implements DisposableBean {
 
   /**
-   * A dynamically managed synchronous client: both views of the same underlying HTTP client,
-   * plus the token service matching its auth configuration.
-   *
-   * <p>Since 2.6.0: Spring marks {@code RestTemplate} for removal; use {@link ManagedRestClient}
-   * through {@link #getOrCreateRestClient} and {@link #replaceRestClient}. This one stays
-   * supported.</p>
-   */
-  public record ManagedSyncClient(RestTemplate restTemplate, RestClient restClient,
-      SyncTokenService tokenService) {}
-
-  /**
    * A dynamically managed synchronous client and the token service matching its auth
    * configuration.
    *
-   * @since 2.6.0
+   * @since 3.0.0
    */
   public record ManagedRestClient(RestClient restClient, SyncTokenService tokenService) {}
 
@@ -72,34 +59,6 @@ public class HttpClientRegistry implements DisposableBean {
   public record ManagedReactiveClient(WebClient webClient, TokenService tokenService) {}
 
   private record Entry(ClientType type, Object managed, Runnable closer) {}
-
-  /**
-   * A synchronous entry: its {@code RestClient} view, and its {@code RestTemplate} view built
-   * on first ask over the same pipeline.
-   */
-  private static final class SyncClient {
-
-    private final SyncClientPipeline pipeline;
-    private final ManagedRestClient restClientView;
-    private @Nullable ManagedSyncClient withRestTemplate;
-
-    SyncClient(SyncClientPipeline pipeline, SyncTokenService tokenService) {
-      this.pipeline = pipeline;
-      this.restClientView = new ManagedRestClient(pipeline.restClient(), tokenService);
-    }
-
-    ManagedRestClient restClientView() {
-      return restClientView;
-    }
-
-    synchronized ManagedSyncClient withRestTemplate() {
-      if (withRestTemplate == null) {
-        withRestTemplate = new ManagedSyncClient(pipeline.restTemplate(),
-            restClientView.restClient(), restClientView.tokenService());
-      }
-      return withRestTemplate;
-    }
-  }
 
   private record RetiringClient(String name, Runnable closer) {}
 
@@ -133,11 +92,11 @@ public class HttpClientRegistry implements DisposableBean {
    * client is returned as-is even if {@code properties} differ — use {@link #replaceRestClient}
    * to apply changed properties.
    *
-   * @since 2.6.0
+   * @since 3.0.0
    */
   public ManagedRestClient getOrCreateRestClient(String name, ClientType type,
       ClientProperties properties) {
-    return getOrCreateSync(name, type, properties).restClientView();
+    return getOrCreateSync(name, type, properties);
   }
 
   /**
@@ -145,39 +104,21 @@ public class HttpClientRegistry implements DisposableBean {
    * the previous client (if any) after the grace period. Its resilience instances are reset
    * first, so the new client runs with resilience state built from the new properties.
    *
-   * @since 2.6.0
+   * @since 3.0.0
    */
   public ManagedRestClient replaceRestClient(String name, ClientType type,
       ClientProperties properties) {
-    return replaceSync(name, type, properties).restClientView();
+    return replaceSync(name, type, properties);
   }
 
-  /**
-   * As {@link #getOrCreateRestClient}, with the client's {@code RestTemplate} too. Both methods
-   * see the same client under a name.
-   *
-   * <p>Recommended since 2.6.0: use {@link #getOrCreateRestClient}. This one stays supported.</p>
-   */
-  public ManagedSyncClient getOrCreate(String name, ClientType type, ClientProperties properties) {
-    return getOrCreateSync(name, type, properties).withRestTemplate();
-  }
-
-  /**
-   * As {@link #replaceRestClient}, with the client's {@code RestTemplate} too.
-   *
-   * <p>Recommended since 2.6.0: use {@link #replaceRestClient}. This one stays supported.</p>
-   */
-  public ManagedSyncClient replace(String name, ClientType type, ClientProperties properties) {
-    return replaceSync(name, type, properties).withRestTemplate();
-  }
-
-  private SyncClient getOrCreateSync(String name, ClientType type, ClientProperties properties) {
+  private ManagedRestClient getOrCreateSync(String name, ClientType type,
+      ClientProperties properties) {
     requireSync(name, type);
     var entry = entries.computeIfAbsent(name, n -> buildSyncEntry(n, type, properties));
     return syncClient(name, entry);
   }
 
-  private SyncClient replaceSync(String name, ClientType type, ClientProperties properties) {
+  private ManagedRestClient replaceSync(String name, ClientType type, ClientProperties properties) {
     requireSync(name, type);
     resetResilience(name);
     var entry = buildSyncEntry(name, type, properties);
@@ -187,7 +128,7 @@ public class HttpClientRegistry implements DisposableBean {
   }
 
   /**
-   * Reactive counterpart of {@link #getOrCreate(String, ClientType, ClientProperties)}.
+   * Reactive counterpart of {@link #getOrCreateRestClient(String, ClientType, ClientProperties)}.
    */
   public ManagedReactiveClient getOrCreateReactive(String name, ClientProperties properties) {
     requireReactive(name);
@@ -196,7 +137,7 @@ public class HttpClientRegistry implements DisposableBean {
   }
 
   /**
-   * Reactive counterpart of {@link #replace(String, ClientType, ClientProperties)}.
+   * Reactive counterpart of {@link #replaceRestClient(String, ClientType, ClientProperties)}.
    */
   public ManagedReactiveClient replaceReactive(String name, ClientProperties properties) {
     requireReactive(name);
@@ -251,7 +192,7 @@ public class HttpClientRegistry implements DisposableBean {
     var tokenService = restRegistrar.createTokenService(name, pipeline);
     var requestFactory = pipeline.requestFactory();
     Runnable closer = () -> closeRequestFactory(name, requestFactory);
-    return new Entry(type, new SyncClient(pipeline, tokenService), closer);
+    return new Entry(type, new ManagedRestClient(pipeline.restClient(), tokenService), closer);
   }
 
   private Entry buildReactiveEntry(String name, ClientProperties properties) {
@@ -278,8 +219,8 @@ public class HttpClientRegistry implements DisposableBean {
         ReactiveEntryCloser.of(connectionProvider, tokenConnectionProvider));
   }
 
-  private SyncClient syncClient(String name, Entry entry) {
-    if (entry.managed() instanceof SyncClient managed) {
+  private ManagedRestClient syncClient(String name, Entry entry) {
+    if (entry.managed() instanceof ManagedRestClient managed) {
       return managed;
     }
     throw new IllegalStateException("Client '" + name + "' is registered as " + entry.type()

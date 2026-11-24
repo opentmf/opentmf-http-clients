@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mockConstruction;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.UnaryOperator;
+import java.util.stream.Stream;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.MockedConstruction;
@@ -17,6 +18,7 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.SpringVersion;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.StringHttpMessageConverter;
@@ -24,22 +26,37 @@ import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
 import org.springframework.http.converter.xml.Jaxb2RootElementHttpMessageConverter;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 
 /**
  * A client derived from the library's {@code RestClient} — {@code mutate()...build()}, as a
  * consumer does per call to add a credential — does not detect Spring's default message converters
- * again. Detection constructs the classpath's converters (the JAXB one scans jars) and cost tens of
- * milliseconds per derived client at 2.6.0-…-1 and -2. The derived client's converters are the ones
- * a 2.5.2 client had, which was built with {@code RestClient.builder(restTemplate)}: the
- * {@code RestTemplate}'s, the same instances in the same order, then Spring's one trailing form or
- * multipart converter. Both hold on every Spring Framework line the library runs on: 7.0 applies a
- * converter configurer instead of the defaults, 7.1 applies it on top of them.
+ * again. Detection constructs the classpath's converters (the JAXB one scans jars) and costs tens
+ * of milliseconds per derived client. The derived client carries the library client's converters,
+ * the same instances in the same order, and their layout is the one the 2.5 clients had: Spring's
+ * default client converters, then Spring's one trailing form or multipart converter. Both hold on
+ * every Spring Framework line the library runs on: 7.0 applies a converter configurer instead of
+ * the defaults, 7.1 applies it on top of them.
  */
 class RestClientConvertersIT {
 
   private static final int DERIVED = 20;
+
+  private static final String CONVERTER = "org.springframework.http.converter.";
+
+  /** Spring Framework 7.1's client converters on this classpath, then its trailing multipart one. */
+  private static final List<String> SEVEN_ONE_LAYOUT = Stream.of("ByteArrayHttpMessageConverter",
+      "StringHttpMessageConverter", "FormHttpMessageConverter", "ResourceHttpMessageConverter",
+      "multipart.MultipartHttpMessageConverter", "json.JacksonJsonHttpMessageConverter",
+      "yaml.JacksonYamlHttpMessageConverter", "xml.Jaxb2RootElementHttpMessageConverter",
+      "multipart.MultipartHttpMessageConverter").map(CONVERTER::concat).toList();
+
+  /** Spring Framework 7.0's client converters on this classpath, then its trailing form one. */
+  private static final List<String> SEVEN_ZERO_LAYOUT = Stream.of("ByteArrayHttpMessageConverter",
+      "StringHttpMessageConverter", "ResourceHttpMessageConverter",
+      "support.AllEncompassingFormHttpMessageConverter", "json.JacksonJsonHttpMessageConverter",
+      "yaml.JacksonYamlHttpMessageConverter", "xml.Jaxb2RootElementHttpMessageConverter",
+      "support.AllEncompassingFormHttpMessageConverter").map(CONVERTER::concat).toList();
 
   /** The two ways consumers derive a client per call. */
   private static final List<UnaryOperator<RestClient.Builder>> DERIVATIONS = List.of(
@@ -62,21 +79,19 @@ class RestClientConvertersIT {
 
   @ParameterizedTest
   @ValueSource(strings = {"jdk", "apache"})
-  void derivingTheBeanClient_constructsNoConverter_andKeepsTheTwoFiveTwoLayout(String clientType) {
+  void derivingTheBeanClient_constructsNoConverter_andKeepsTheTwoFiveLayout(String clientType) {
     contextRunner
         .withPropertyValues("opentmf.client-type=" + clientType,
             "opentmf.http-clients.store.base-url=http://localhost:9999")
         .run(context -> {
           assertThat(context).hasNotFailed();
-          var bean = (RestClient) context.getBean("storeRestClient");
-          var restTemplate = (RestTemplate) context.getBean("storeRestTemplate");
-          assertDerivingIsCheap(bean, restTemplate);
+          assertDerivingIsCheap((RestClient) context.getBean("storeRestClient"));
         });
   }
 
   @ParameterizedTest
   @ValueSource(strings = {"jdk", "apache"})
-  void derivingADynamicClient_constructsNoConverter_andKeepsTheTwoFiveTwoLayout(
+  void derivingADynamicClient_constructsNoConverter_andKeepsTheTwoFiveLayout(
       String clientType) {
     contextRunner
         .withPropertyValues("opentmf.http-clients.unused.base-url=http://localhost:9999")
@@ -85,21 +100,21 @@ class RestClientConvertersIT {
           var properties = new ClientProperties();
           properties.setBaseUrl("http://localhost:9999");
           var managed = context.getBean(HttpClientRegistry.class)
-              .getOrCreate("dynamic", ClientType.valueOf(clientType.toUpperCase()), properties);
-          assertDerivingIsCheap(managed.restClient(), managed.restTemplate());
+              .getOrCreateRestClient("dynamic", ClientType.valueOf(clientType.toUpperCase()),
+                  properties);
+          assertDerivingIsCheap(managed.restClient());
         });
   }
 
   /**
    * For each derivation: deriving {@link #DERIVED} clients constructs no JSON and no JAXB converter
-   * (Spring's detection constructs both on every build that registers the defaults), and no more
-   * string converters than deriving a client built as 2.5.2 built it, on the same Spring version
-   * (7.0's trailing form converter constructs one per build, 7.1's multipart converter none).
+   * (Spring's detection constructs both on every build that registers the defaults), and no string
+   * converter beyond the one Spring 7.0's trailing form converter constructs per build (7.1's
+   * multipart converter constructs none). Every derived client carries the library client's
+   * converters, the same instances in the same order, and Spring's trailing one of its own.
    */
-  private static void assertDerivingIsCheap(RestClient restClient, RestTemplate restTemplate) {
-    var twoFiveTwo = RestClient.builder(restTemplate).build();
+  private static void assertDerivingIsCheap(RestClient restClient) {
     for (var derivation : DERIVATIONS) {
-      var baseline = derive(twoFiveTwo, derivation);
       var derived = derive(restClient, derivation);
 
       assertThat(derived.json()).as("JSON converters constructed while deriving %d clients",
@@ -107,10 +122,10 @@ class RestClientConvertersIT {
       assertThat(derived.jaxb()).as("JAXB converters constructed while deriving %d clients",
           DERIVED).isZero();
       assertThat(derived.string()).as("string converters constructed while deriving %d clients",
-          DERIVED).isEqualTo(baseline.string());
-      derived.clients().forEach(client -> assertTheTwoFiveTwoLayout(client, restTemplate));
+          DERIVED).isEqualTo(springSevenZero() ? DERIVED : 0);
+      derived.clients().forEach(client -> assertTheSameConverters(client, restClient));
     }
-    assertTheTwoFiveTwoLayout(restClient, restTemplate);
+    assertTheTwoFiveLayout(restClient);
   }
 
   private record Derived(List<RestClient> clients, int json, int jaxb, int string) {
@@ -134,20 +149,28 @@ class RestClientConvertersIT {
   }
 
   /**
-   * The client's converters equal those of a client built as 2.5.2 built it, with
-   * {@code RestClient.builder(restTemplate)} on the same Spring version: the same size and classes,
-   * once each, and the {@code RestTemplate}'s converters as the same instances.
+   * The client's converters are the layout the 2.5 clients had on the same Spring version:
+   * Spring's default client converters on this classpath, once each and in their order, then the
+   * trailing form converter (7.0) or multipart converter (7.1).
    */
-  private static void assertTheTwoFiveTwoLayout(RestClient restClient, RestTemplate restTemplate) {
-    var converters = converters(restClient);
-    var twoFiveTwo = converters(RestClient.builder(restTemplate).build());
-    assertThat(converters).hasSameSizeAs(twoFiveTwo);
-    assertThat(converters).extracting(Object::getClass)
-        .containsExactlyElementsOf(twoFiveTwo.stream().<Class<?>>map(Object::getClass).toList());
-    var templateConverters = restTemplate.getMessageConverters();
-    for (int i = 0; i < templateConverters.size(); i++) {
-      assertThat(converters.get(i)).isSameAs(templateConverters.get(i));
+  private static void assertTheTwoFiveLayout(RestClient restClient) {
+    assertThat(converters(restClient)).extracting(converter -> converter.getClass().getName())
+        .containsExactlyElementsOf(springSevenZero() ? SEVEN_ZERO_LAYOUT : SEVEN_ONE_LAYOUT);
+  }
+
+  /** The same instances in the same order, but for Spring's trailing converter, built per build. */
+  private static void assertTheSameConverters(RestClient derived, RestClient restClient) {
+    var expected = converters(restClient);
+    var actual = converters(derived);
+    assertThat(actual).hasSameSizeAs(expected);
+    for (int i = 0; i < expected.size() - 1; i++) {
+      assertThat(actual.get(i)).isSameAs(expected.get(i));
     }
+    assertThat(actual.get(actual.size() - 1)).hasSameClassAs(expected.get(expected.size() - 1));
+  }
+
+  private static boolean springSevenZero() {
+    return SpringVersion.getVersion().startsWith("7.0.");
   }
 
   @SuppressWarnings("unchecked")

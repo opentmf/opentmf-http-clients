@@ -17,7 +17,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.web.client.RestClientResponseException;
 
 /**
- * Utility methods for synchronous HTTP clients ({@code RestTemplate} and {@code RestClient}).
+ * Utility methods for synchronous HTTP clients ({@code RestClient}).
  *
  * <p>All methods in this class work equally well with both client types because they operate on
  * the shared exception hierarchy ({@link RestClientResponseException},

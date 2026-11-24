@@ -10,12 +10,12 @@ import org.springframework.web.client.RestClient;
  * application's {@code ObservationRegistry}, the base URL, and the library's error handling
  * ({@code OpenTmfClientResponseException}, {@code OpenTmfClientNotFoundException} for 404).
  *
- * <p>The library's JDK and Apache backends implement this interface and
- * {@link RestTemplateFactory} alike, so an application can use it as the marker that the
- * library's synchronous clients are present. Each call builds a new client with its own
+ * <p>The library's JDK and Apache backends implement this interface, so an application can use
+ * it as the marker that the library's synchronous clients are present (for example
+ * {@code @ConditionalOnBean(RestClientFactory.class)}). Each call builds a new client with its own
  * connection pool.</p>
  *
- * @since 2.6.0
+ * @since 3.0.0
  */
 public interface RestClientFactory {
 

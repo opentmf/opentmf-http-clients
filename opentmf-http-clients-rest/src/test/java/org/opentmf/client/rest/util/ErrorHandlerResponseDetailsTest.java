@@ -8,14 +8,12 @@ import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -23,13 +21,11 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.ClientHttpResponse;
 
 /**
- * Verifies that both synchronous error handlers carry response headers, the parsed
+ * Verifies that the {@code RestClient} status handler carries response headers, the parsed
  * {@code Retry-After}, and the {@code Content-Type} charset onto the thrown exception. The error
  * path is the only place these are reachable — the response is closed before callers see it.
  */
 class ErrorHandlerResponseDetailsTest {
-
-  private final OpenTmfResponseErrorHandler restTemplateHandler = new OpenTmfResponseErrorHandler();
 
   private static ClientHttpResponse response(HttpStatusCode status, HttpHeaders headers,
       byte[] body) throws IOException {
@@ -46,15 +42,6 @@ class ErrorHandlerResponseDetailsTest {
     return headers;
   }
 
-  private OpenTmfClientResponseException catchFromRestTemplate(HttpStatusCode status,
-      HttpHeaders headers, byte[] body) throws IOException {
-    var response = response(status, headers, body);
-    var thrown = catchThrowable(
-        () -> restTemplateHandler.handleError(URI.create("/api/items"), HttpMethod.GET, response));
-    assertThat(thrown).isInstanceOf(OpenTmfClientResponseException.class);
-    return (OpenTmfClientResponseException) thrown;
-  }
-
   private OpenTmfClientResponseException catchFromRestClient(HttpStatusCode status,
       HttpHeaders headers, byte[] body) throws IOException {
     var response = response(status, headers, body);
@@ -66,8 +53,8 @@ class ErrorHandlerResponseDetailsTest {
   }
 
   @Test
-  void restTemplateHandler_carriesHeaders() throws IOException {
-    var ex = catchFromRestTemplate(HttpStatus.INTERNAL_SERVER_ERROR,
+  void statusHandler_carriesHeaders() throws IOException {
+    var ex = catchFromRestClient(HttpStatus.INTERNAL_SERVER_ERROR,
         headers("X-Request-Id", "req-42"), "boom".getBytes(StandardCharsets.UTF_8));
 
     assertThat(ex.getHeaders()).isNotNull();
@@ -75,16 +62,16 @@ class ErrorHandlerResponseDetailsTest {
   }
 
   @Test
-  void restTemplateHandler_carriesRetryAfter_onRetryableStatus() throws IOException {
-    var ex = catchFromRestTemplate(HttpStatus.SERVICE_UNAVAILABLE,
+  void statusHandler_carriesRetryAfter_onRetryableStatus() throws IOException {
+    var ex = catchFromRestClient(HttpStatus.SERVICE_UNAVAILABLE,
         headers(HttpHeaders.RETRY_AFTER, "12"), new byte[0]);
 
     assertThat(ex.getRetryAfter()).isEqualTo(Duration.ofSeconds(12));
   }
 
   @Test
-  void restTemplateHandler_dropsRetryAfter_onNonRetryableStatus() throws IOException {
-    var ex = catchFromRestTemplate(HttpStatus.FORBIDDEN,
+  void statusHandler_dropsRetryAfter_onNonRetryableStatus() throws IOException {
+    var ex = catchFromRestClient(HttpStatus.FORBIDDEN,
         headers(HttpHeaders.RETRY_AFTER, "12"), new byte[0]);
 
     // The header is still visible; only the actionable value is withheld.
@@ -93,12 +80,12 @@ class ErrorHandlerResponseDetailsTest {
   }
 
   @Test
-  void restTemplateHandler_usesCharsetFromContentType() throws IOException {
+  void statusHandler_usesCharsetFromContentType() throws IOException {
     Charset iso = StandardCharsets.ISO_8859_1;
     var headers = new HttpHeaders();
     headers.setContentType(new MediaType("application", "json", iso));
 
-    var ex = catchFromRestTemplate(HttpStatus.BAD_REQUEST, headers,
+    var ex = catchFromRestClient(HttpStatus.BAD_REQUEST, headers,
         "{\"detail\":\"café\"}".getBytes(iso));
 
     assertThat(ex.getMessage()).contains("café");
@@ -106,10 +93,10 @@ class ErrorHandlerResponseDetailsTest {
   }
 
   @Test
-  void restTemplateHandler_malformedContentType_doesNotMaskTheRealError() throws IOException {
+  void statusHandler_malformedContentType_doesNotMaskTheRealError() throws IOException {
     var headers = headers(HttpHeaders.CONTENT_TYPE, "not/a/valid/type;;;");
 
-    var ex = catchFromRestTemplate(HttpStatus.BAD_GATEWAY, headers,
+    var ex = catchFromRestClient(HttpStatus.BAD_GATEWAY, headers,
         "upstream down".getBytes(StandardCharsets.UTF_8));
 
     assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
@@ -117,7 +104,7 @@ class ErrorHandlerResponseDetailsTest {
   }
 
   @Test
-  void restClientHandler_carriesHeadersAndRetryAfter() throws IOException {
+  void statusHandler_carriesHeadersAndRetryAfter() throws IOException {
     var headers = headers(HttpHeaders.RETRY_AFTER, "5");
     headers.set("X-Request-Id", "req-99");
 
@@ -128,7 +115,7 @@ class ErrorHandlerResponseDetailsTest {
   }
 
   @Test
-  void restClientHandler_dropsRetryAfter_onNonRetryableStatus() throws IOException {
+  void statusHandler_dropsRetryAfter_onConflict() throws IOException {
     var ex = catchFromRestClient(HttpStatus.CONFLICT,
         headers(HttpHeaders.RETRY_AFTER, "5"), new byte[0]);
 
@@ -143,9 +130,10 @@ class ErrorHandlerResponseDetailsTest {
     when(response.getHeaders()).thenReturn(null);
     when(response.getBody()).thenReturn(new ByteArrayInputStream(new byte[0]));
 
-    var uri = URI.create("/api/items");
+    var request = mock(HttpRequest.class);
+    var handler = OpenTmfRestClientStatusHandler.errorHandler();
 
-    assertThatThrownBy(() -> restTemplateHandler.handleError(uri, HttpMethod.GET, response))
+    assertThatThrownBy(() -> handler.handle(request, response))
         .isInstanceOf(OpenTmfClientResponseException.class)
         .satisfies(t -> assertThat(((OpenTmfClientResponseException) t).getStatusCode())
             .isEqualTo(HttpStatus.BAD_GATEWAY));

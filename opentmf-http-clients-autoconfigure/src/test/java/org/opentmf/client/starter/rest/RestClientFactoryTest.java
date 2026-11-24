@@ -28,20 +28,18 @@ import org.opentmf.client.common.model.PeerTextInMessage;
 import org.opentmf.client.common.resilience.ResilienceRegistries;
 import org.opentmf.client.rest.service.api.OutboundInterceptorContribution;
 import org.opentmf.client.rest.service.api.RestClientFactory;
-import org.opentmf.client.rest.service.api.RestTemplateFactory;
 import org.opentmf.client.starter.ApachePoolMeters;
 import org.opentmf.client.starter.TokenFetchMeters;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestTemplate;
 import org.zalando.logbook.Logbook;
 import org.zalando.logbook.spring.LogbookClientHttpRequestInterceptor;
 
 /**
  * The {@link RestClientFactory} side of the JDK and Apache factories: a {@code RestClient} built
- * straight from the client's pipeline, carrying what the factory's {@code RestTemplate} carries.
+ * straight from the client's pipeline, carrying the pipeline's interceptors in their order.
  */
 class RestClientFactoryTest {
 
@@ -67,9 +65,9 @@ class RestClientFactoryTest {
 
   static Stream<Arguments> factories() {
     return Stream.of(
-        Arguments.of("jdk", new JdkRestTemplateFactory(SUPPORT_PROVIDER, RESILIENCE,
+        Arguments.of("jdk", new JdkRestClientFactory(SUPPORT_PROVIDER, RESILIENCE,
             NO_OBSERVATION, CONTRIBUTIONS)),
-        Arguments.of("apache", new ApacheRestTemplateFactory(SUPPORT_PROVIDER, RESILIENCE,
+        Arguments.of("apache", new ApacheRestClientFactory(SUPPORT_PROVIDER, RESILIENCE,
             NO_POOL_METERS, NO_OBSERVATION, CONTRIBUTIONS)));
   }
 
@@ -140,21 +138,21 @@ class RestClientFactoryTest {
 
   @ParameterizedTest(name = "{0}")
   @MethodSource("factories")
-  void createRestClient_carriesTheTemplatesInterceptorsInTheSameOrder(String name,
+  void createRestClient_carriesThePipelinesInterceptorsInTheSameOrder(String name,
       RestClientFactory factory) {
     var properties = properties();
     properties.getResilience().setEnabled(true);
     properties.setFixedHeaders(Map.of("X-Fixed", "1"));
     properties.setLoggingEnabled(true);
 
-    var templateChain = ((RestTemplateFactory) factory)
-        .create(name, properties).getInterceptors().stream()
+    var pipelineChain = ((AbstractRestClientFactory) factory)
+        .pipeline(name, properties).interceptors().stream()
         .map(Object::getClass).toList();
     var clientChain = interceptorsOf(factory.createRestClient(name, properties)).stream()
         .map(Object::getClass).toList();
 
-    assertThat(templateChain).hasSizeGreaterThanOrEqualTo(4);
-    assertThat(clientChain).isEqualTo(templateChain);
+    assertThat(pipelineChain).hasSizeGreaterThanOrEqualTo(4);
+    assertThat(clientChain).isEqualTo(pipelineChain);
   }
 
   @ParameterizedTest(name = "{0}")
@@ -176,16 +174,16 @@ class RestClientFactoryTest {
   }
 
   @Test
-  void theRegistrarsTemplateTypedConstructor_takesTheBackendsByTheirTemplateType() {
+  void theRegistrar_takesTheBackendsByTheirFactoryType() {
     mockServer.when(request().withMethod("GET").withPath("/old"), Times.once())
         .respond(response().withStatusCode(200).withBody("still here"));
     var context = new GenericApplicationContext();
-    Map<String, RestTemplateFactory> backends = Map.of(
-        "jdk", new JdkRestTemplateFactory(SUPPORT_PROVIDER, RESILIENCE, NO_OBSERVATION,
+    Map<String, RestClientFactory> backends = Map.of(
+        "jdk", new JdkRestClientFactory(SUPPORT_PROVIDER, RESILIENCE, NO_OBSERVATION,
             CONTRIBUTIONS));
     ObjectProvider<TokenFetchMeters> noMeters = provider(null);
 
-    var registrar = new RestClientRegistrar(context, backends, noMeters, SUPPORT_PROVIDER);
+    var registrar = new RestClientRegistrar(context, noMeters, SUPPORT_PROVIDER, backends);
 
     assertThat(registrar.createRestClient("old", ClientType.JDK, properties()).get().uri("/old")
         .retrieve().body(String.class)).isEqualTo("still here");
@@ -193,12 +191,12 @@ class RestClientFactoryTest {
     assertThatThrownBy(() -> registrar.createRestClient("old", ClientType.APACHE, properties))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("requires client-type: APACHE");
-    Map<String, RestTemplateFactory> foreign = Map.of("own",
-        (clientId, clientProperties) -> new RestTemplate());
-    assertThatThrownBy(() -> new RestClientRegistrar(context, foreign, noMeters,
-        SUPPORT_PROVIDER))
+    Map<String, RestClientFactory> foreign = Map.of("own",
+        (clientId, clientProperties) -> RestClient.create());
+    assertThatThrownBy(() -> new RestClientRegistrar(context, noMeters, SUPPORT_PROVIDER,
+        foreign))
         .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("Unknown RestTemplateFactory type");
+        .hasMessageContaining("Unknown RestClientFactory type");
   }
 
   static List<ClientHttpRequestInterceptor> interceptorsOf(RestClient restClient) {

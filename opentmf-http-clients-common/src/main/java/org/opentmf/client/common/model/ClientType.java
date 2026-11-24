@@ -7,9 +7,9 @@ import java.util.Map;
  * Determines which HTTP client implementation to create.
  *
  * <ul>
- *   <li>{@link #JDK} — synchronous {@code RestTemplate} backed by the JDK {@code HttpClient}
+ *   <li>{@link #JDK} — synchronous {@code RestClient} backed by the JDK {@code HttpClient}
  *       (default)</li>
- *   <li>{@link #APACHE} — synchronous {@code RestTemplate} backed by Apache HttpClient 5</li>
+ *   <li>{@link #APACHE} — synchronous {@code RestClient} backed by Apache HttpClient 5</li>
  *   <li>{@link #NETTY} — reactive {@code WebClient} backed by Reactor Netty</li>
  * </ul>
  *

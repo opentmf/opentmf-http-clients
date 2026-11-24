@@ -5,19 +5,49 @@ All notable changes to this project will be documented in this file.
 This project is the successor to [opentmf-web-clients](https://github.com/opentmf/opentmf-web-clients) (v1x).
 For migration guidance from the predecessor, see the [Migration from opentmf-web-clients](README.md#migration-from-v1x) section in the README.
 
-## [2.6.0] - 2026-11-21
+## [3.0.0] - 2026-11-24
+
+2.6.0 was never released: its snapshots led to this release, which replaces it. Every entry below
+is measured against 2.5.1, the last release.
+
+### Removed
+- **`RestTemplate` support. A major release: code that names any of the types or methods below
+  does not compile against 3.0.0, and a bean conditioned on `RestTemplateFactory` stops being
+  created without any error** — see the upgrade notes in
+  [docs/upgrade-3.0.md](docs/upgrade-3.0.md), which name each replacement. Spring Framework 7.1
+  marks `RestTemplate` and its `ResponseErrorHandler` for removal in 8.0. Before this release, the
+  library's synchronous clients would not have started at all without the class, even an
+  application that uses only `RestClient`: the registrar was conditioned on `RestTemplate`, and
+  every client registered a `RestTemplate` bean. The library now names neither type, and its
+  synchronous clients are conditioned on `RestClient` and the rest module. Removed:
+  - the `{clientId}RestTemplate` bean; the `{clientId}RestClient` and `{clientId}TokenService`
+    beans stay, built as before;
+  - `RestTemplateFactory`; `RestClientFactory` is the type to detect the synchronous clients by
+    (`@ConditionalOnBean(RestClientFactory.class)`);
+  - `RestClientRegistrar.createRestTemplate`, `createRestClient(RestTemplate)`,
+    `createRestClient(RestTemplate, ClientProperties)`, `createTokenService(clientId,
+    restTemplate, restClient, properties)` and the constructor taking the backends by their
+    `RestTemplateFactory` type;
+  - `HttpClientRegistry.ManagedSyncClient`, `getOrCreate` and `replace`;
+  - `RestLogbookSupport.addInterceptor(RestTemplate)`;
+  - `OpenTmfResponseErrorHandler`; `OpenTmfRestClientStatusHandler.errorHandler(...)` throws the
+    same exceptions with the same messages;
+  - `TokenUtil.REST_TEMPLATE`;
+  - the backends' protected helpers taking a `RestTemplate`.
+
+  Renamed: `JdkRestTemplateFactory` → `JdkRestClientFactory` and `ApacheRestTemplateFactory` →
+  `ApacheRestClientFactory` (with them their logger names and their bean names). The
+  configuration keys and their values are unchanged, the `rest` and `servlet` aliases of `jdk`
+  included.
 
 ### Added
-- **`RestClientFactory`, beside `RestTemplateFactory`.** Spring Framework 7.1 marks
-  `RestTemplate` and its `ResponseErrorHandler` for removal, so an application needs a way to
-  build and detect the library's synchronous clients without either. The JDK and Apache backends
-  now implement `RestClientFactory` (`createRestClient(clientId, properties)`) as well as
-  `RestTemplateFactory`; an application can use it as its `@ConditionalOnBean` marker in place of
-  `RestTemplateFactory`. `HttpClientRegistry` gains `getOrCreateRestClient` and
-  `replaceRestClient`, which return a `ManagedRestClient` (the `RestClient` and the token
-  service, no `RestTemplate`); under one name they see the same client as `getOrCreate` and
-  `replace`. `RestClientRegistrar` gains `createRestClient(clientId, type, properties)`,
-  `createPipeline(clientId, type, properties)` and `createTokenService(clientId, pipeline)`.
+- **`RestClientFactory`.** The JDK and Apache backends implement it
+  (`createRestClient(clientId, properties)`); an application detects the library's synchronous
+  clients by it, for example as its `@ConditionalOnBean` marker. `HttpClientRegistry` gains
+  `getOrCreateRestClient` and `replaceRestClient`, which return a `ManagedRestClient` (the
+  `RestClient` and the token service). `RestClientRegistrar` gains
+  `createRestClient(clientId, type, properties)`, `createPipeline(clientId, type, properties)`
+  and `createTokenService(clientId, pipeline)`.
 - **New meter series on a service whose `MeterRegistry` comes from Boot's metrics
   auto-configuration:** `opentmf.client.token.fetch`, `opentmf.client.pool.leased|available|
   pending|max` and the `resilience4j.circuitbreaker.*`/`resilience4j.bulkhead.*` meters of the
@@ -38,18 +68,15 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   It lies between 100 and 100000; a value outside them stops the application at start with
   `peer-text-cap-length must be between 100 and 100000`. **Compatibility:** without the setting the
   message is the message of 2.5.1. New overloads taking a client's `ClientProperties` follow both
-  settings: `OpenTmfResponseErrorHandler(ClientProperties)`,
-  `OpenTmfRestClientStatusHandler.errorHandler(ClientProperties)` and
+  settings: `OpenTmfRestClientStatusHandler.errorHandler(ClientProperties)` and
   `WebClientConfigUtil.errorWrappingFilter(ClientProperties)`; the library installs them on every
   client it builds. `ErrorBodyExtractor.extractMessage` gains overloads with the cap length. The
-  entry points without properties (`new OpenTmfResponseErrorHandler()`, `errorHandler()`,
-  `errorWrappingFilter()`, `createRestClient(RestTemplate)`) keep the message of 2.5.1 and ignore
-  both settings.
-  It holds on every client type through `RestTemplate`, `RestClient` and `WebClient`. In every
-  value `getResponseBody()`, the status, the headers, `Retry-After` and the `404` subtype are
-  unchanged. The no-argument `OpenTmfResponseErrorHandler()`,
-  `OpenTmfRestClientStatusHandler.errorHandler()`, `WebClientConfigUtil.errorWrappingFilter()`,
-  `RestClientRegistrar.createRestClient(RestTemplate)` and the existing
+  entry points without properties (`errorHandler()`, `errorWrappingFilter()`) keep the message of
+  2.5.1 and ignore both settings.
+  It holds on every client type through `RestClient` and `WebClient`. In every value
+  `getResponseBody()`, the status, the headers, `Retry-After` and the `404` subtype are
+  unchanged. The no-argument `OpenTmfRestClientStatusHandler.errorHandler()`,
+  `WebClientConfigUtil.errorWrappingFilter()` and the existing
   `ErrorBodyExtractor.extractMessage` methods keep today's message. Each has a new overload that
   takes the value. An application that reads the peer's sentence out of the message must not
   choose `none`; `getResponseBody()` holds it in every value.
@@ -116,10 +143,10 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   API calls keep the client's bounds whatever is set; the token request still shares the client's
   connection pool, TLS, proxy, interceptors and resilience. On every client type (`jdk`, `apache`,
   `netty`) and for dynamic clients. See the README's "Token request bounds".
-- `RestClientRegistrar.createTokenService(clientId, restTemplate, restClient, properties)`: the
-  token request's own timeouts are applied over the given `RestTemplate`'s HTTP client. The
-  overloads without the `RestTemplate` keep working; setting `bearer-auth.request-timeout` or
-  `bearer-auth.response-timeout` with them fails by name.
+- `RestClientRegistrar.createTokenService(clientId, pipeline)` applies the token request's own
+  timeouts over the pipeline's HTTP client. The overloads taking only a `RestClient` keep
+  working; setting `bearer-auth.request-timeout` or `bearer-auth.response-timeout` with them fails
+  by name.
 - `TokenCallProperties.of(ClientProperties)` (`opentmf-http-clients-common`): the settings a
   token request runs on, for code that wires the token clients by hand.
 
@@ -141,14 +168,13 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   fixed route name `token-fetch` (`TokenRoute.NAME`), never the address. Nothing else changes: the
   observation's name, its other labels and the client's own calls stay as they were. A dashboard
   or alert that selected token calls by `uri="none"` selects them by `uri="token-fetch"` now.
-- **The `RestClient` is built from the client's parts, no longer from its `RestTemplate`.** The
+- **The `RestClient` is built from the client's parts, no longer from a `RestTemplate`.** The
   library builds each synchronous client's parts once — the HTTP client with its mTLS, pool and
   time limits, the interceptors in their order, the observation registry, the base URL and the
-  error handling — and makes the `{clientId}RestClient` from them directly; the
-  `{clientId}RestTemplate` is made from the same parts. Both beans are still registered, share
-  one connection pool, and behave as before: the same interceptors in the same order, the same
-  Logbook output, the same circuit breaker, the same mTLS and proxy, the same `traceparent`, the
-  same exceptions.
+  error handling — and makes the `{clientId}RestClient` from them directly. It behaves as in
+  2.5.1: the same interceptors in the same order, the same message converters, the same Logbook
+  output, the same circuit breaker, the same mTLS and proxy, the same `traceparent`, the same
+  exceptions.
 - **A failed token call is its own type, with the identity provider's body withheld.** An error
   status from the token endpoint (any 4xx or 5xx) surfaced as the same exception as a failure of
   the call the token was for — `OpenTmfClientResponseException`, `OpenTmfClientNotFoundException`
@@ -156,8 +182,8 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   not tell a token endpoint's `400`, `404` or `410` from the answer of the service it called, and a
   provider that echoes the request form put a credential into the exception. It now throws
   `BearerTokenException`, on every client type (`jdk`, `apache`, `netty`), static and dynamic
-  clients alike. **Compatibility, measured on the released 2.5.1 jars against 2.6.0 (each client
-  type, the token endpoint answering `400`, `404`, `410` and `503`):**
+  clients alike. **Compatibility, measured on the released 2.5.1 jars against this release
+  (each client type, the token endpoint answering `400`, `404`, `410` and `503`):**
   - a catch of `OpenTmfClientResponseException` catches it as before (`BearerTokenException` is
     one); status, response headers, `Retry-After` and the number of token requests (a `503`
     1 + `num-retries`, others 1) are unchanged;
@@ -171,7 +197,7 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   Every token call that got an answer and failed is now one of two sibling types, both
   `OpenTmfClientResponseException`s: `BearerTokenException` (an error status) and the unchanged
   `BearerTokenResponseException` (a success status without a usable token); a consumer that tells
-  them from the target's answer names both. See the README's "A failed token call since 2.6.0".
+  them from the target's answer names both. See the README's "A failed token call since 3.0.0".
 - **A client with `bearer-auth` but no `bearer-auth.token-url` is refused when it is built**, by
   name (`Client '<id>' has bearer-auth but no bearer-auth.token-url. …`), at context start and in
   the dynamic-client registry, whether or not a bean validator is on the classpath. A
@@ -208,9 +234,10 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   `<token response body withheld; bearer-auth.log-response-body: true logs it>`, now stands in
   its place; nothing else of the line changes (the request with Logbook's own masking, the status,
   the headers), and the client's own calls keep their bodies. **Measured on the released 2.5.1
-  jars against 2.6.0**, on all three client types, an identity provider echoing `client_secret` in
-  a `400` and in a `200`: on 2.5.1 the echo is in the TRACE line, on 2.6.0 it is not. Scoped to the
-  token calls; it neither relies on nor changes the application's Logbook configuration.
+  jars against this release**, on all three client types, an identity provider echoing
+  `client_secret` in a `400` and in a `200`: on 2.5.1 the echo is in the TRACE line, on this
+  release it is not. Scoped to the token calls; it neither relies on nor changes the
+  application's Logbook configuration.
 - **Documented: what `response-timeout` bounds on each client type**, which no earlier release
   said correctly (the Javadoc called it a read timeout on all client types). The behaviour itself
   is unchanged. On `jdk` it is one deadline for the whole exchange, counted from the send, so a
@@ -244,14 +271,13 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   up to half of it either way, so the token calls of callers, keys and pods that failed together
   do not retry together. The number of retries and the `Retry-After` handling are unchanged.
 
-- **The `RestTemplate` entry points stay supported; `RestClientFactory` is the recommended one.**
-  Spring Framework 7.1 marks `RestTemplate` for removal. The library's `RestTemplate` types and
-  methods — `RestTemplateFactory`, `OpenTmfResponseErrorHandler`,
-  `HttpClientRegistry.ManagedSyncClient` with `getOrCreate` and `replace`, the `RestTemplate`
-  methods of `RestClientRegistrar` and `RestLogbookSupport`, and the backends' protected helpers
-  taking a `RestTemplate` — are not marked deprecated and keep working unchanged; their Javadoc
-  names the newer entry point. An application that keeps using `RestTemplate` changes nothing. The
-  README's "Moving off `RestTemplate`" table names each newer entry point.
+- Dependency and build-tooling updates: Spring Boot 4.1.1 → 4.2.0 (Spring Framework 7.0.9 →
+  7.1.0), so the library is built and tested on the framework its consumers run;
+  opentmf-mockserver (tests) 2.1.13 → 2.1.16; maven-surefire/failsafe 3.6.0 → 3.6.1,
+  maven-enforcer-plugin 3.6.3 → 3.7.0, jacoco-maven-plugin 0.8.15 → 0.8.16,
+  sonar-maven-plugin 5.8.0.7211 → 5.9.0.7382.
+- README: derive a client from `{clientId}WebClient` once, not per call; each derived build
+  rebuilds all codecs on Boot's `WebClient.Builder` (the same in earlier releases).
 
 ### Fixed
 - **The library's meters were never registered in an application whose `MeterRegistry` comes
@@ -276,7 +302,7 @@ For migration guidance from the predecessor, see the [Migration from opentmf-web
   gets without Logbook. **The only call that changes is one that today returns an empty success
   for a response never fully received;** a body that arrives completely is unchanged and logged
   as before on every client type, and `jdk` and `netty` already failed such a call. **Visible in
-  the interceptor chain:** in a REST client's `RestTemplate` interceptors the guard
+  the interceptor chain:** in a REST client's interceptors the guard
   (`BodyReadFailureGuard`) now stands where `LogbookClientHttpRequestInterceptor` stood, with
   Logbook's interceptor inside it; code that inspects the chain by type finds the guard there.
 

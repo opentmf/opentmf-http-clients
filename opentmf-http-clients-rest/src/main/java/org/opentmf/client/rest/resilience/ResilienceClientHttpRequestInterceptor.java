@@ -16,9 +16,8 @@ import org.springframework.http.client.ClientHttpResponse;
 
 /**
  * Decorates every synchronous exchange with Bulkhead → CircuitBreaker → HTTP call. Registered as
- * the outermost interceptor of library-built {@code RestTemplate}s (and inherited by the
- * {@code RestClient} built from them), so the breaker also observes time spent in downstream
- * interceptors.
+ * the outermost of the library's own interceptors of every library-built {@code RestClient}, so
+ * the breaker also observes time spent in downstream interceptors.
  *
  * <p>An HTTP response whose status is on the record-status-codes list is recorded as a breaker
  * failure; any other response — including 4xx — counts as success. {@code IOException}s and

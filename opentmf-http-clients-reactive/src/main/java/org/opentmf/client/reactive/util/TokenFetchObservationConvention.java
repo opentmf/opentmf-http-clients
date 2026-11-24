@@ -12,7 +12,7 @@ import org.springframework.web.reactive.function.client.DefaultClientRequestObse
  * token call goes to a configured address, not a URI template, so the default would show no
  * route ({@code none}); every other label and the observation's name stay Spring's.
  *
- * @since 2.6.0
+ * @since 3.0.0
  */
 public class TokenFetchObservationConvention extends DefaultClientRequestObservationConvention {
 

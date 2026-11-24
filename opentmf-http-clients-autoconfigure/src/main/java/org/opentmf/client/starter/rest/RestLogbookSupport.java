@@ -2,7 +2,6 @@ package org.opentmf.client.starter.rest;
 
 import java.util.List;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
-import org.springframework.web.client.RestTemplate;
 
 /**
  * Bridge bean that wraps a Logbook {@link ClientHttpRequestInterceptor}, and the one of a client's
@@ -34,15 +33,6 @@ public class RestLogbookSupport {
   /** Appends the client calls' Logbook interceptor to a client's interceptors. */
   public void addInterceptor(List<ClientHttpRequestInterceptor> interceptors) {
     interceptors.add(interceptor);
-  }
-
-  /**
-   * As {@link #addInterceptor(List)}, on the template's own list.
-   *
-   * <p>Recommended since 2.6.0: use {@link #addInterceptor(List)}. This one stays supported.</p>
-   */
-  public void addInterceptor(RestTemplate restTemplate) {
-    addInterceptor(restTemplate.getInterceptors());
   }
 
   /** In a token call's interceptors: the token calls' Logbook interceptor for the client's. */

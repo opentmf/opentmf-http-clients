@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.opentmf.client.common.resilience.ResilienceRegistries;
 import org.opentmf.client.rest.resilience.ResilienceClientHttpRequestInterceptor;
@@ -13,7 +15,8 @@ import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.http.client.ClientHttpRequestInterceptor;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.reactive.function.client.WebClient;
 
 class ResilienceAutoConfigurationIT {
@@ -50,8 +53,8 @@ class ResilienceAutoConfigurationIT {
             "opentmf.http-clients.onedms.resilience.bulkhead.max-concurrent-calls=10")
         .run(context -> {
           assertThat(context).hasNotFailed();
-          var restTemplate = (RestTemplate) context.getBean("onedmsRestTemplate");
-          assertThat(restTemplate.getInterceptors().get(0))
+          var restClient = (RestClient) context.getBean("onedmsRestClient");
+          assertThat(interceptorsOf(restClient).get(0))
               .isInstanceOf(ResilienceClientHttpRequestInterceptor.class);
 
           var registries = context.getBean(ResilienceRegistries.class);
@@ -70,8 +73,8 @@ class ResilienceAutoConfigurationIT {
             "opentmf.http-clients.plain.base-url=http://localhost:9999")
         .run(context -> {
           assertThat(context).hasNotFailed();
-          var restTemplate = (RestTemplate) context.getBean("plainRestTemplate");
-          assertThat(restTemplate.getInterceptors())
+          var restClient = (RestClient) context.getBean("plainRestClient");
+          assertThat(interceptorsOf(restClient))
               .noneMatch(ResilienceClientHttpRequestInterceptor.class::isInstance);
           assertThat(context.getBean(ResilienceRegistries.class)
               .getCircuitBreakerRegistry().getAllCircuitBreakers()).isEmpty();
@@ -144,8 +147,15 @@ class ResilienceAutoConfigurationIT {
             "opentmf.http-clients.legacy.base-url=http://localhost:9999")
         .run(context -> {
           assertThat(context).hasNotFailed();
-          assertThat(context.containsBean("legacyRestTemplate")).isTrue();
+          assertThat(context.containsBean("legacyRestClient")).isTrue();
           assertThat(context).doesNotHaveBean(ResilienceRegistries.class);
         });
+  }
+
+  /** The client's interceptors in their order, as a derived builder sees them. */
+  private static List<ClientHttpRequestInterceptor> interceptorsOf(RestClient restClient) {
+    var interceptors = new ArrayList<ClientHttpRequestInterceptor>();
+    restClient.mutate().requestInterceptors(interceptors::addAll);
+    return interceptors;
   }
 }

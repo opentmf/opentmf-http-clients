@@ -24,7 +24,7 @@ import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import reactor.netty.http.client.HttpClient;
@@ -33,7 +33,7 @@ import reactor.test.StepVerifier;
 /**
  * Integration tests verifying that clients configured with mTLS certificates (keystore + truststore)
  * can communicate over HTTPS. This exercises the SSL configuration in WebClientConfigUtil,
- * JdkRestTemplateFactory, and ApacheRestTemplateFactory.
+ * JdkRestClientFactory, and ApacheRestClientFactory.
  *
  * <p>Three client types are tested: reactive (WebClient), REST with JDK HttpClient,
  * and REST with Apache HttpClient 5. Negative tests verify that clients without
@@ -134,10 +134,9 @@ class MtlsIT {
         .verifyComplete();
   }
 
-  /** Both shapes of both sync backends: the RestTemplate and the RestClient bean. */
+  /** Both sync backends' RestClient bean. */
   @ParameterizedTest(name = "{0} {1}")
-  @CsvSource({"Jdk, RestTemplate", "Jdk, RestClient", "Apache, RestTemplate",
-      "Apache, RestClient"})
+  @CsvSource({"Jdk, RestClient", "Apache, RestClient"})
   void testRestClient_withCertificates_httpsGetSucceeds(String backend, String shape) {
     var path = "/rest-" + backend + "-" + shape + "-get";
     mockGet(path, backend + " mTLS OK");
@@ -147,8 +146,7 @@ class MtlsIT {
   }
 
   @ParameterizedTest(name = "{0} {1}")
-  @CsvSource({"Jdk, RestTemplate", "Jdk, RestClient", "Apache, RestTemplate",
-      "Apache, RestClient"})
+  @CsvSource({"Jdk, RestClient", "Apache, RestClient"})
   void testRestClient_withCertificates_httpsPostSucceeds(String backend, String shape) {
     var path = "/rest-" + backend + "-" + shape + "-post";
     mockPost(path, backend + " post OK");
@@ -182,10 +180,9 @@ class MtlsIT {
   void testRestClient_withoutCertificates_httpsGetFails() {
     mockGet("/should-not-reach", "unreachable");
 
-    RestTemplate plainRestTemplate = new RestTemplate();
+    var response = RestClient.create().get().uri(httpsBaseUrl + "/should-not-reach").retrieve();
 
-    assertThrows(ResourceAccessException.class, () ->
-        plainRestTemplate.getForObject(httpsBaseUrl + "/should-not-reach", String.class));
+    assertThrows(ResourceAccessException.class, () -> response.body(String.class));
   }
 
   // --- Helpers ---

@@ -52,7 +52,7 @@ class TokenUtilTest {
     assertThat(TokenUtil.TOKEN_TYPE_BASIC).isEqualTo("Basic");
     assertThat(TokenUtil.CLIENT_PROPERTIES).isEqualTo("ClientProperties");
     assertThat(TokenUtil.WEB_CLIENT).isEqualTo("WebClient");
-    assertThat(TokenUtil.REST_TEMPLATE).isEqualTo("RestTemplate");
+    assertThat(TokenUtil.REST_CLIENT).isEqualTo("RestClient");
     assertThat(TokenUtil.TOKEN_SERVICE).isEqualTo("TokenService");
   }
 }

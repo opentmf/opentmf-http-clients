@@ -28,11 +28,11 @@ import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnClass(name = "org.apache.hc.client5.http.impl.classic.CloseableHttpClient")
 @Slf4j
-public class ApacheRestTemplateFactory extends AbstractRestTemplateFactory {
+public class ApacheRestClientFactory extends AbstractRestClientFactory {
 
   private final ApachePoolMeters poolMeters;
 
-  public ApacheRestTemplateFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider,
+  public ApacheRestClientFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider,
       ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider,
       ObjectProvider<ApachePoolMeters> poolMetersProvider,
       ObjectProvider<ObservationRegistry> observationRegistryProvider,
@@ -43,8 +43,8 @@ public class ApacheRestTemplateFactory extends AbstractRestTemplateFactory {
   }
 
   @Override
-  SyncClientPipeline pipeline(String clientId, ClientProperties properties, String shape) {
-    log.debug("Creating Apache HttpClient 5 {} for client: {}", shape, clientId);
+  SyncClientPipeline pipeline(String clientId, ClientProperties properties) {
+    log.debug("Creating Apache HttpClient 5 RestClient for client: {}", clientId);
     try {
       var sslContext = buildSslContext(properties);
 
@@ -113,7 +113,7 @@ public class ApacheRestTemplateFactory extends AbstractRestTemplateFactory {
       return pipelineOf(requestFactory(httpClient, properties), interceptors, properties);
     } catch (Exception e) {
       throw new IllegalArgumentException(
-          "Failed to create Apache " + shape + " for " + clientId, e);
+          "Failed to create Apache RestClient for " + clientId, e);
     }
   }
 

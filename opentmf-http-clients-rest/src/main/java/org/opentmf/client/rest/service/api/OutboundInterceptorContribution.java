@@ -8,7 +8,7 @@ import org.springframework.http.client.ClientHttpRequestInterceptor;
 /**
  * An application-supplied interceptor that the library puts at the <b>head</b> of the chain of
  * every synchronous client it builds. Declare one as a bean, and every library-built client
- * carries it: the {@code <id>RestTemplate} and {@code <id>RestClient} beans, the token calls of
+ * carries it: the {@code <id>RestClient} bean, the token calls of
  * {@code <id>TokenService}, and the clients built at runtime through {@code HttpClientRegistry}.
  *
  * <p>Contributions run <b>before</b> every interceptor of the library's own (resilience, gzip,

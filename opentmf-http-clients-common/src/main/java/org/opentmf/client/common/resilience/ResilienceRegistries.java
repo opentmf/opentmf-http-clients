@@ -15,7 +15,7 @@ import org.opentmf.client.common.model.ResilienceProperties;
 /**
  * Application-wide holder of the resilience4j registries used by the library. One instance per
  * application context; resilience instances are named after the owning client id, so a client's
- * token calls and all of its client shapes (RestTemplate, RestClient, WebClient) share the same
+ * token calls and its client (RestClient or WebClient) share the same
  * CircuitBreaker and Bulkhead.
  *
  * <p>This class must only be instantiated when resilience4j is on the classpath (the starter

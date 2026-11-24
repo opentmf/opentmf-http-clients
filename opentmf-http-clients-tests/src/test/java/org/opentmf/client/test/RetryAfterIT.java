@@ -19,7 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.reactive.function.client.WebClient;
 
 /**
@@ -34,8 +34,8 @@ class RetryAfterIT {
   private static final Duration BACKOFF = Duration.ofMillis(10);
   private static final Duration CAP = Duration.ofSeconds(2);
 
-  @Autowired private RestTemplate syncRetryAfterRestTemplate;
-  @Autowired private RestTemplate apacheRetryRestTemplate;
+  @Autowired private RestClient syncRetryAfterRestClient;
+  @Autowired private RestClient apacheRetryRestClient;
   @Autowired private WebClient reactiveRetryAfterWebClient;
 
   @BeforeEach
@@ -49,7 +49,8 @@ class RetryAfterIT {
         HttpHeaders.RETRY_AFTER, "1");
 
     var ex = catchThrowableOfType(OpenTmfClientResponseException.class,
-        () -> syncRetryAfterRestTemplate.getForObject(BASE_URL + API_PATH, String.class));
+        () -> syncRetryAfterRestClient.get().uri(BASE_URL + API_PATH)
+            .retrieve().body(String.class));
 
     assertThat(ex.getRetryAfter()).isEqualTo(Duration.ofSeconds(1));
     assertThat(ex.getHeaders()).isNotNull();
@@ -62,7 +63,8 @@ class RetryAfterIT {
         HttpHeaders.RETRY_AFTER, "1");
 
     var ex = catchThrowableOfType(OpenTmfClientResponseException.class,
-        () -> syncRetryAfterRestTemplate.getForObject(BASE_URL + API_PATH, String.class));
+        () -> syncRetryAfterRestClient.get().uri(BASE_URL + API_PATH)
+            .retrieve().body(String.class));
 
     assertThat(ex.getRetryAfter()).isNull();
     assertThat(ex.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isEqualTo("1");
@@ -76,7 +78,7 @@ class RetryAfterIT {
 
     long start = System.nanoTime();
     var body = SyncClientUtil.executeWithRetry(
-        () -> syncRetryAfterRestTemplate.getForObject(BASE_URL + API_PATH, String.class),
+        () -> syncRetryAfterRestClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class),
         3, Duration.ofMillis(10), 0.0d, Duration.ofSeconds(2));
     long elapsedMs = (System.nanoTime() - start) / 1_000_000;
 
@@ -91,7 +93,7 @@ class RetryAfterIT {
         HttpHeaders.RETRY_AFTER, "3600");
 
     Supplier<String> call = () -> SyncClientUtil.executeWithRetry(
-        () -> syncRetryAfterRestTemplate.getForObject(BASE_URL + API_PATH, String.class),
+        () -> syncRetryAfterRestClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class),
         3, BACKOFF, 0.0d, CAP);
 
     long start = System.nanoTime();
@@ -111,11 +113,11 @@ class RetryAfterIT {
     get(API_PATH, 1, "second response", HttpStatus.OK);
 
     var ex = catchThrowableOfType(OpenTmfClientResponseException.class,
-        () -> apacheRetryRestTemplate.getForObject(BASE_URL + API_PATH, String.class));
+        () -> apacheRetryRestClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class));
 
     // The caller sees the first 503 directly; the queued 200 is untouched.
     assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
-    assertThat(apacheRetryRestTemplate.getForObject(BASE_URL + API_PATH, String.class))
+    assertThat(apacheRetryRestClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class))
         .isEqualTo("second response");
   }
 
@@ -126,7 +128,7 @@ class RetryAfterIT {
     get(API_PATH, 1, "recovered", HttpStatus.OK);
 
     var body = SyncClientUtil.executeWithRetry(
-        () -> apacheRetryRestTemplate.getForObject(BASE_URL + API_PATH, String.class),
+        () -> apacheRetryRestClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class),
         3, Duration.ofMillis(10), 0.0d, Duration.ofSeconds(5));
 
     assertThat(body).isEqualTo("recovered");

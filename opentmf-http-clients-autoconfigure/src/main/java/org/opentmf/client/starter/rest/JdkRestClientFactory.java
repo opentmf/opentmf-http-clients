@@ -17,9 +17,9 @@ import org.springframework.http.client.ClientHttpRequestInterceptor;
 
 @Configuration(proxyBeanMethods = false)
 @Slf4j
-public class JdkRestTemplateFactory extends AbstractRestTemplateFactory {
+public class JdkRestClientFactory extends AbstractRestClientFactory {
 
-  public JdkRestTemplateFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider,
+  public JdkRestClientFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider,
       ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider,
       ObjectProvider<ObservationRegistry> observationRegistryProvider,
       ObjectProvider<OutboundInterceptorContribution> contributionsProvider) {
@@ -28,8 +28,8 @@ public class JdkRestTemplateFactory extends AbstractRestTemplateFactory {
   }
 
   @Override
-  SyncClientPipeline pipeline(String clientId, ClientProperties properties, String shape) {
-    log.debug("Creating JDK HttpClient {} for client: {}", shape, clientId);
+  SyncClientPipeline pipeline(String clientId, ClientProperties properties) {
+    log.debug("Creating JDK HttpClient RestClient for client: {}", clientId);
     try {
       var builder = HttpClient.newBuilder()
           .connectTimeout(properties.getRequestTimeout())
@@ -58,7 +58,7 @@ public class JdkRestTemplateFactory extends AbstractRestTemplateFactory {
       addLogbookInterceptor(interceptors, properties);
       return pipelineOf(requestFactory, interceptors, properties);
     } catch (Exception e) {
-      throw new IllegalArgumentException("Failed to create JDK " + shape + " for " + clientId, e);
+      throw new IllegalArgumentException("Failed to create JDK RestClient for " + clientId, e);
     }
   }
 

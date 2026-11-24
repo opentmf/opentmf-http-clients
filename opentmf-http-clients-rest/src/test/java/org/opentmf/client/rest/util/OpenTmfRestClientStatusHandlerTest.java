@@ -77,6 +77,23 @@ class OpenTmfRestClientStatusHandlerTest {
     }
   }
 
+  @Test
+  void handleError_jsonBody_extractsDetail() throws IOException {
+    String jsonBody = """
+        {"detail":"Validation failed for field 'name'","title":"Bad Request"}""";
+    var request = mock(HttpRequest.class);
+    var handler = OpenTmfRestClientStatusHandler.errorHandler();
+    try (var response = mockResponse(HttpStatus.BAD_REQUEST, jsonBody)) {
+      assertThatThrownBy(() -> handler.handle(request, response))
+          .isInstanceOf(OpenTmfClientResponseException.class)
+          .satisfies(ex -> {
+            var e = (OpenTmfClientResponseException) ex;
+            assertThat(e.getMessage()).contains("Validation failed");
+            assertThat(e.getResponseBody()).isEqualTo(jsonBody);
+          });
+    }
+  }
+
   private static ClientHttpResponse mockResponse(HttpStatus status, String body)
       throws IOException {
     var response = mock(ClientHttpResponse.class);

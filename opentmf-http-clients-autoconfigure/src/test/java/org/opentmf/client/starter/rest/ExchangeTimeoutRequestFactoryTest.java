@@ -196,10 +196,10 @@ class ExchangeTimeoutRequestFactoryTest {
   void apache_withoutExchangeTimeout_springsOwnFactory_withIt_theBoundedOne() {
     var properties = new ClientProperties();
 
-    assertThat(ApacheRestTemplateFactory.requestFactory(HttpClients.createDefault(), properties))
+    assertThat(ApacheRestClientFactory.requestFactory(HttpClients.createDefault(), properties))
         .isExactlyInstanceOf(HttpComponentsClientHttpRequestFactory.class);
     properties.setExchangeTimeout(Duration.ofSeconds(3));
-    assertThat(ApacheRestTemplateFactory.requestFactory(HttpClients.createDefault(), properties))
+    assertThat(ApacheRestClientFactory.requestFactory(HttpClients.createDefault(), properties))
         .isInstanceOfSatisfying(ExchangeTimeoutRequestFactory.class,
             factory -> assertThat(factory.exchangeTimeout()).isEqualTo(Duration.ofSeconds(3)));
   }
@@ -209,11 +209,11 @@ class ExchangeTimeoutRequestFactoryTest {
     var properties = new ClientProperties();
     properties.setResponseTimeout(Duration.ofSeconds(45));
 
-    assertThat(JdkRestTemplateFactory.readTimeout(properties)).isEqualTo(Duration.ofSeconds(45));
+    assertThat(JdkRestClientFactory.readTimeout(properties)).isEqualTo(Duration.ofSeconds(45));
     properties.setExchangeTimeout(Duration.ofSeconds(10));
-    assertThat(JdkRestTemplateFactory.readTimeout(properties)).isEqualTo(Duration.ofSeconds(10));
+    assertThat(JdkRestClientFactory.readTimeout(properties)).isEqualTo(Duration.ofSeconds(10));
     properties.setExchangeTimeout(Duration.ofMinutes(5));
-    assertThat(JdkRestTemplateFactory.readTimeout(properties)).isEqualTo(Duration.ofSeconds(45));
+    assertThat(JdkRestClientFactory.readTimeout(properties)).isEqualTo(Duration.ofSeconds(45));
   }
 
   @Test

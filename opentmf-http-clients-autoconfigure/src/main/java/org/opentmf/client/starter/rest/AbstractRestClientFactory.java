@@ -18,32 +18,29 @@ import org.opentmf.client.common.resilience.ResilienceRegistries;
 import org.opentmf.client.rest.resilience.ResilienceClientHttpRequestInterceptor;
 import org.opentmf.client.rest.service.api.OutboundInterceptorContribution;
 import org.opentmf.client.rest.service.api.RestClientFactory;
-import org.opentmf.client.rest.service.api.RestTemplateFactory;
 import org.opentmf.client.rest.util.FixedHeadersClientHttpRequestInterceptor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.util.CollectionUtils;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestTemplate;
 
 /**
- * Shared plumbing for the {@link RestClientFactory} and {@link RestTemplateFactory}
- * implementations: mTLS {@link SSLContext} construction from base64-encoded JKS material, the
- * application's {@link OutboundInterceptorContribution}s, the fixed-headers interceptor (defaults
- * only — per-request headers win), optional Logbook wiring, and optional resilience4j
- * decoration. A backend builds its {@link SyncClientPipeline}; the {@code RestClient} and the
- * {@code RestTemplate} are both made from it.
+ * Shared plumbing for the {@link RestClientFactory} implementations: mTLS {@link SSLContext}
+ * construction from base64-encoded JKS material, the application's
+ * {@link OutboundInterceptorContribution}s, the fixed-headers interceptor (defaults only —
+ * per-request headers win), optional Logbook wiring, and optional resilience4j decoration. A backend builds its {@link SyncClientPipeline}, and the {@code RestClient} is
+ * made from it.
  */
 @Slf4j
-abstract class AbstractRestTemplateFactory implements RestClientFactory, RestTemplateFactory {
+abstract class AbstractRestClientFactory implements RestClientFactory {
 
   private final RestLogbookSupport logbookSupport;
   private final ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider;
   private final @Nullable ObservationRegistry observationRegistry;
   private final ObjectProvider<OutboundInterceptorContribution> contributionsProvider;
 
-  protected AbstractRestTemplateFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider,
+  protected AbstractRestClientFactory(ObjectProvider<RestLogbookSupport> logbookSupportProvider,
       ObjectProvider<ResilienceRegistries> resilienceRegistriesProvider,
       ObjectProvider<ObservationRegistry> observationRegistryProvider,
       ObjectProvider<OutboundInterceptorContribution> contributionsProvider) {
@@ -55,18 +52,12 @@ abstract class AbstractRestTemplateFactory implements RestClientFactory, RestTem
 
   /**
    * Builds the client's {@link SyncClientPipeline}: the backend's request factory and the
-   * interceptors in their order, with the application's {@link ObservationRegistry}.
+   * interceptors in their order, with the application's {@link ObservationRegistry}. The
+   * registrar builds it once for a client's beans.
    *
-   * @param shape what is being built, named in the failure's message
    * @throws IllegalArgumentException when the client cannot be built from the properties
    */
-  abstract SyncClientPipeline pipeline(String clientId, ClientProperties properties,
-      String shape);
-
-  /** The client's pipeline, as the registrar builds it once for both of its beans. */
-  SyncClientPipeline pipeline(String clientId, ClientProperties properties) {
-    return pipeline(clientId, properties, "client");
-  }
+  abstract SyncClientPipeline pipeline(String clientId, ClientProperties properties);
 
   /**
    * The pipeline over the given request factory and interceptors. The application's
@@ -82,18 +73,7 @@ abstract class AbstractRestTemplateFactory implements RestClientFactory, RestTem
 
   @Override
   public RestClient createRestClient(String clientId, ClientProperties properties) {
-    return pipeline(clientId, properties, "RestClient").restClient();
-  }
-
-  /**
-   * {@inheritDoc}
-   *
-   * <p>Recommended since 2.6.0: use {@link #createRestClient(String, ClientProperties)}. This one
-   * stays supported.</p>
-   */
-  @Override
-  public RestTemplate create(String clientId, ClientProperties properties) {
-    return pipeline(clientId, properties, "RestTemplate").restTemplate();
+    return pipeline(clientId, properties).restClient();
   }
 
   /**
@@ -107,29 +87,6 @@ abstract class AbstractRestTemplateFactory implements RestClientFactory, RestTem
     contributionsProvider.orderedStream()
         .map(OutboundInterceptorContribution::interceptor)
         .forEach(interceptors::add);
-  }
-
-  /**
-   * As {@link #addContributedInterceptors(List)}, on the template's own list.
-   *
-   * <p>Recommended since 2.6.0: use {@link #addContributedInterceptors(List)}. This one stays
-   * supported.</p>
-   */
-  protected void addContributedInterceptors(RestTemplate restTemplate) {
-    addContributedInterceptors(restTemplate.getInterceptors());
-  }
-
-  /**
-   * Hands the application's {@link ObservationRegistry} to the {@code RestTemplate}; without a
-   * registry bean the template keeps its default no-op registry.
-   *
-   * <p>Since 2.6.0: The {@link SyncClientPipeline} applies the registry to both shapes. This one
-   * stays supported.</p>
-   */
-  protected void applyObservationRegistry(RestTemplate restTemplate) {
-    if (observationRegistry != null) {
-      restTemplate.setObservationRegistry(observationRegistry);
-    }
   }
 
   protected SSLContext buildSslContext(ClientProperties properties)
@@ -191,44 +148,11 @@ abstract class AbstractRestTemplateFactory implements RestClientFactory, RestTem
         bulkhead != null);
   }
 
-  /**
-   * As {@link #addResilienceInterceptor(List, String, ClientProperties)}, on the template's own
-   * list.
-   *
-   * <p>Recommended since 2.6.0: use {@link #addResilienceInterceptor(List, String,
-   * ClientProperties)}. This one stays supported.</p>
-   */
-  protected void addResilienceInterceptor(RestTemplate restTemplate, String clientId,
-      ClientProperties properties) {
-    addResilienceInterceptor(restTemplate.getInterceptors(), clientId, properties);
-  }
-
   protected void addFixedHeadersInterceptor(List<ClientHttpRequestInterceptor> interceptors,
       ClientProperties properties) {
     if (!CollectionUtils.isEmpty(properties.getFixedHeaders())) {
       interceptors.add(new FixedHeadersClientHttpRequestInterceptor(properties.getFixedHeaders()));
     }
-  }
-
-  /**
-   * As {@link #addFixedHeadersInterceptor(List, ClientProperties)}, on the template's own list.
-   *
-   * <p>Recommended since 2.6.0: use {@link #addFixedHeadersInterceptor(List, ClientProperties)}.
-   * This one stays supported.</p>
-   */
-  protected void addFixedHeadersInterceptor(RestTemplate restTemplate,
-      ClientProperties properties) {
-    addFixedHeadersInterceptor(restTemplate.getInterceptors(), properties);
-  }
-
-  /**
-   * As {@link #addLogbookInterceptor(List, ClientProperties)}, on the template's own list.
-   *
-   * <p>Recommended since 2.6.0: use {@link #addLogbookInterceptor(List, ClientProperties)}. This
-   * one stays supported.</p>
-   */
-  protected void addLogbookInterceptor(RestTemplate restTemplate, ClientProperties properties) {
-    addLogbookInterceptor(restTemplate.getInterceptors(), properties);
   }
 
   protected void addLogbookInterceptor(List<ClientHttpRequestInterceptor> interceptors,
