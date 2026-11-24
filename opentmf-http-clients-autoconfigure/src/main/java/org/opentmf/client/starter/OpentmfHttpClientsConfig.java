@@ -29,8 +29,8 @@ public class OpentmfHttpClientsConfig {
 
   /**
    * The HTTP clients to create, keyed by client id. For each entry the starter registers the beans
-   * "[id]RestClient" (synchronous client types) or "[id]WebClient" (netty),
-   * plus an "[id]TokenService" when bearer-auth is configured. See ClientProperties for the
+   * "[id]ClientProperties", "[id]RestClient" (jdk, apache) or "[id]WebClient" (netty), and
+   * "[id]TokenService" (a no-op one for a client without auth). See ClientProperties for the
    * per-client settings.
    */
   @NotEmpty

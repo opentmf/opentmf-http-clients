@@ -4,6 +4,11 @@
 implied. Written to be read before deciding what, if anything, lands in
 `2.1.6`.
 
+> **Record.** This is the analysis as it was decided in August 2026; §1 ("Where we stand today")
+> describes the library of that date. Since then the library acts on `Retry-After` and
+> `Content-Type` and captures the headers of an error (see the README), and 3.0.0 removed
+> `RestTemplate`. Class names in this document are those of 3.0.0.
+
 **Question it answers:** of the well-known HTTP response headers, which ones
 should this library *read and act on*, which should it merely *expose* to
 callers, and which would be *actively harmful* to honour — and in each case,
@@ -48,7 +53,7 @@ decision the library makes is driven by **status code and body alone**:
 |---|---|
 | Retry (`SyncClientUtil.shouldRetryOn`, `WebClientUtil.shouldRetryOn`) | status code only, via `HttpClientUtil.isRetryableStatus` |
 | Backoff (`executeWithRetry`, `Retry.backoff`) | `base * 2^attempt` + jitter; no server input |
-| Error mapping (`OpenTmfResponseErrorHandler`, `OpenTmfRestClientStatusHandler`, reactive `errorWrappingFilter`) | status + body; **headers are in hand and discarded** |
+| Error mapping (`OpenTmfRestClientStatusHandler`, reactive `errorWrappingFilter`) | status + body; **headers are in hand and discarded** |
 | Error body parsing (`ErrorBodyExtractor`) | body only; JSON detected by trial-parse, charset by heuristic |
 | Circuit-breaker failure classification (`ResilienceClientHttpRequestInterceptor`, `ReactiveResilience`) | status code only |
 | Bearer token TTL (`TokenEntry.from`, `TokenCacheUtil`) | `expires_in` × `cache-safety-factor` |

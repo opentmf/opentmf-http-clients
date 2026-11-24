@@ -16,7 +16,7 @@ Supports both **reactive** (`WebClient`) and **synchronous** (`RestClient`) clie
 
 | Module | Description |
 |---|---|
-| `opentmf-http-clients-common` | Shared models, exceptions, and utilities (reactor-free, Spring-client-free) |
+| `opentmf-http-clients-common` | Shared models, exceptions, and utilities (reactor-free; no `RestClient` or `WebClient`) |
 | `opentmf-http-clients-rest` | Synchronous (RestClient) interfaces and utilities |
 | `opentmf-http-clients-reactive` | Reactive (WebClient / Reactor Netty) interfaces and utilities |
 | `opentmf-http-clients-bearer-provider` | Bearer token retrieval with Caffeine caching (reactive and sync) |
@@ -1162,9 +1162,12 @@ webClient.get().uri("/catalog/123")
 
 The target exception class must extend `OpenTmfClientResponseException` and provide a `(HttpStatusCode, String, String)` or `(HttpStatusCode, String)` constructor.
 
-#### Legacy manual error handling
+#### Manual error handling, for a client the library did not build
 
-The `handleError(...)` methods on `WebClientUtil` and `SyncClientUtil` remain available for use with non-library-created clients or for backward compatibility.
+The library's own clients already throw `OpenTmfClientResponseException`, and the library itself calls neither of these methods. They turn a Spring error into the library's exception type for a client you built yourself:
+
+- `SyncClientUtil.handleError(RestClientResponseException, type)`: for a `RestClient` built without the library's status handler, whose Spring default throws `RestClientResponseException` (`HttpClientErrorException`, `HttpServerErrorException`). A `RestClient` built with `OpenTmfRestClientStatusHandler.errorHandler()` as its `defaultStatusHandler` needs no call.
+- `WebClientUtil.handleError(ClientResponse, type)`: inside `onStatus` of a `WebClient` built without the library's error filter (`WebClientConfigUtil.errorWrappingFilter()`).
 
 ### Shared utilities
 
@@ -1319,7 +1322,7 @@ This project replaces `opentmf-web-clients` (v1.x). The key changes are:
 </dependency>
 ```
 
-**After** (v2.x — pick the starter that fits your stack):
+**After** (v2.x and 3.x — pick the starter that fits your stack):
 
 ```xml
 <!-- Umbrella (REST + reactive) -->
@@ -1384,7 +1387,7 @@ opentmf:
 
 ### Property mapping
 
-| v1.x | v2.x | Notes |
+| v1.x | v2.x and 3.x | Notes |
 |---|---|---|
 | `opentmf.webclient.basic.<id>.*` | `opentmf.http-clients.<id>.*` | Moved out of `basic:` block |
 | `opentmf.webclient.openid.<id>.*` | `opentmf.http-clients.<id>.*` | Moved out of `openid:` block |
@@ -1413,7 +1416,7 @@ import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 
 ### Environment variable migration
 
-| v1.x pattern | v2.x pattern |
+| v1.x pattern | v2.x and 3.x pattern |
 |---|---|
 | `OPENTMF_WEBCLIENT_BASIC_<ID>_*` | `OPENTMF_HTTP_CLIENTS_<ID>_*` |
 | `OPENTMF_WEBCLIENT_OPENID_<ID>_*` | `OPENTMF_HTTP_CLIENTS_<ID>_*` |

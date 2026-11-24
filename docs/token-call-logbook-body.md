@@ -1,5 +1,10 @@
 # Token call in the Logbook TRACE line: the response body (measured 2026-11-14)
 
+> **Record** of a comparison measured on 2026-11-14, on the unreleased line after 2.5.1 (then
+> `2.5.2-SNAPSHOT`). That line was renumbered 2.6.0 on 2026-11-21, which is what this file calls
+> it, and was never released: it became 3.0.0 (see the CHANGELOG). The behaviour measured here is
+> unchanged in 3.0.0.
+
 Row OTMF-HTTP-TOKEN-CALL-LOG-WITHOUT-RESPONSE-BODY-1 (ledger #4158). With Logbook on the classpath
 and `logging-enabled` (the default), a bearer client's token call is logged like any other call.
 Logbook's default body filters mask the tokens of a JSON answer and the `client_secret`,

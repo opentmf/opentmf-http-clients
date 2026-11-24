@@ -1,5 +1,11 @@
 # `exchange-timeout`: what a client that does not set it sees (measured 2026-11-15)
 
+> **Record** of a comparison measured on 2026-11-15, on the unreleased line after 2.5.1 (then
+> `2.5.2-SNAPSHOT`). That line was renumbered 2.6.0 on 2026-11-21, which is what this file calls
+> it, and was never released: it became 3.0.0 (see the CHANGELOG). The behaviour measured here is
+> unchanged in 3.0.0. The harness, `CompatCellsIT`, names no API that 3.0.0 removed and compiles
+> against it (checked at e7c6b01).
+
 Row OTMF-HTTP-RESPONSE-TIMEOUT-MEANS-THREE-THINGS-1, part 2 (ledger #4190). `exchange-timeout` is
 opt-in and unset by default; the gate for it is that a client that does not set it sees the same
 timings and the same exceptions as before, on all three client types. This file is that claim,

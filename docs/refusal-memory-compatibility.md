@@ -1,5 +1,10 @@
 # The refusal memory: what a client that sets nothing sees (measured 2026-11-20)
 
+> **Record** of a comparison measured on 2026-11-20, on the unreleased line after 2.5.1 (then
+> `2.5.2-SNAPSHOT`). That line was renumbered 2.6.0 on 2026-11-21, which is what this file calls
+> it, and was never released: it became 3.0.0 (see the CHANGELOG). The behaviour measured here is
+> unchanged in 3.0.0.
+
 Row OTMF-HTTP-CLIENTS-FAILURE-MEMORY-ALSO-REMEMBERS-A-REFUSED-CREDENTIAL-1 (ledger #4587). The
 change adds the opt-in `bearer-auth.refusal-memory`, unset by default. The compatibility gate: a
 client that does not set it sees the same token calls, outcomes, exceptions and counter as
