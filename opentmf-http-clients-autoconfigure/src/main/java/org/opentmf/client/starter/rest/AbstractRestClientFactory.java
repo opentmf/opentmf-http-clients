@@ -52,18 +52,12 @@ abstract class AbstractRestClientFactory implements RestClientFactory {
 
   /**
    * Builds the client's {@link SyncClientPipeline}: the backend's request factory and the
-   * interceptors in their order, with the application's {@link ObservationRegistry}.
+   * interceptors in their order, with the application's {@link ObservationRegistry}. The
+   * registrar builds it once for a client's beans.
    *
-   * @param shape what is being built, named in the failure's message
    * @throws IllegalArgumentException when the client cannot be built from the properties
    */
-  abstract SyncClientPipeline pipeline(String clientId, ClientProperties properties,
-      String shape);
-
-  /** The client's pipeline, as the registrar builds it once for its beans. */
-  SyncClientPipeline pipeline(String clientId, ClientProperties properties) {
-    return pipeline(clientId, properties, "client");
-  }
+  abstract SyncClientPipeline pipeline(String clientId, ClientProperties properties);
 
   /**
    * The pipeline over the given request factory and interceptors. The application's
@@ -79,7 +73,7 @@ abstract class AbstractRestClientFactory implements RestClientFactory {
 
   @Override
   public RestClient createRestClient(String clientId, ClientProperties properties) {
-    return pipeline(clientId, properties, "RestClient").restClient();
+    return pipeline(clientId, properties).restClient();
   }
 
   /**

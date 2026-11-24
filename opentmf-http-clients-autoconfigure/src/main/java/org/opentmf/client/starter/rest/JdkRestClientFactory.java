@@ -28,8 +28,8 @@ public class JdkRestClientFactory extends AbstractRestClientFactory {
   }
 
   @Override
-  SyncClientPipeline pipeline(String clientId, ClientProperties properties, String shape) {
-    log.debug("Creating JDK HttpClient {} for client: {}", shape, clientId);
+  SyncClientPipeline pipeline(String clientId, ClientProperties properties) {
+    log.debug("Creating JDK HttpClient RestClient for client: {}", clientId);
     try {
       var builder = HttpClient.newBuilder()
           .connectTimeout(properties.getRequestTimeout())
@@ -58,7 +58,7 @@ public class JdkRestClientFactory extends AbstractRestClientFactory {
       addLogbookInterceptor(interceptors, properties);
       return pipelineOf(requestFactory, interceptors, properties);
     } catch (Exception e) {
-      throw new IllegalArgumentException("Failed to create JDK " + shape + " for " + clientId, e);
+      throw new IllegalArgumentException("Failed to create JDK RestClient for " + clientId, e);
     }
   }
 

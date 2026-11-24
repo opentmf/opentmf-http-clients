@@ -43,8 +43,8 @@ public class ApacheRestClientFactory extends AbstractRestClientFactory {
   }
 
   @Override
-  SyncClientPipeline pipeline(String clientId, ClientProperties properties, String shape) {
-    log.debug("Creating Apache HttpClient 5 {} for client: {}", shape, clientId);
+  SyncClientPipeline pipeline(String clientId, ClientProperties properties) {
+    log.debug("Creating Apache HttpClient 5 RestClient for client: {}", clientId);
     try {
       var sslContext = buildSslContext(properties);
 
@@ -113,7 +113,7 @@ public class ApacheRestClientFactory extends AbstractRestClientFactory {
       return pipelineOf(requestFactory(httpClient, properties), interceptors, properties);
     } catch (Exception e) {
       throw new IllegalArgumentException(
-          "Failed to create Apache " + shape + " for " + clientId, e);
+          "Failed to create Apache RestClient for " + clientId, e);
     }
   }
 
