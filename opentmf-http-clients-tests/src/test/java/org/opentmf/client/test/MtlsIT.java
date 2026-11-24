@@ -180,10 +180,9 @@ class MtlsIT {
   void testRestClient_withoutCertificates_httpsGetFails() {
     mockGet("/should-not-reach", "unreachable");
 
-    var plainRestClient = RestClient.create();
+    var response = RestClient.create().get().uri(httpsBaseUrl + "/should-not-reach").retrieve();
 
-    assertThrows(ResourceAccessException.class, () -> plainRestClient.get()
-        .uri(httpsBaseUrl + "/should-not-reach").retrieve().body(String.class));
+    assertThrows(ResourceAccessException.class, () -> response.body(String.class));
   }
 
   // --- Helpers ---

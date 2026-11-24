@@ -48,8 +48,9 @@ class SyncClientUtilIT {
   void handleError_withResponseBody_createsExceptionWithMessage() {
     get(API_PATH, 1, "{\"error\":\"not found\"}", HttpStatus.NOT_FOUND);
 
+    var response = restClient.get().uri(BASE_URL + API_PATH).retrieve(); // lazy: no exchange yet
     try {
-      restClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class);
+      response.body(String.class);
       fail("Expected RestClientResponseException");
     } catch (RestClientResponseException thrown) {
       var ex = SyncClientUtil.handleError(thrown, BearerTokenException.class);
@@ -64,8 +65,9 @@ class SyncClientUtilIT {
   void handleError_withEmptyBody_createsExceptionWithoutMessage() {
     get(API_PATH, 1, "", HttpStatus.INTERNAL_SERVER_ERROR);
 
+    var response = restClient.get().uri(BASE_URL + API_PATH).retrieve(); // lazy: no exchange yet
     try {
-      restClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class);
+      response.body(String.class);
       fail("Expected RestClientResponseException");
     } catch (RestClientResponseException thrown) {
       var ex = SyncClientUtil.handleError(thrown, OpenTmfClientResponseException.class);
@@ -80,8 +82,9 @@ class SyncClientUtilIT {
   void shouldRetryOn_retryableRestClientException_returnsTrue() {
     get(API_PATH, 1, "unavailable", HttpStatus.SERVICE_UNAVAILABLE);
 
+    var response = restClient.get().uri(BASE_URL + API_PATH).retrieve(); // lazy: no exchange yet
     try {
-      restClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class);
+      response.body(String.class);
       fail("Expected HttpServerErrorException");
     } catch (HttpServerErrorException thrown) {
       assertThat(SyncClientUtil.shouldRetryOn(thrown)).isTrue();
@@ -92,8 +95,9 @@ class SyncClientUtilIT {
   void shouldRetryOn_nonRetryableRestClientException_returnsFalse() {
     get(API_PATH, 1, "bad request", HttpStatus.BAD_REQUEST);
 
+    var response = restClient.get().uri(BASE_URL + API_PATH).retrieve(); // lazy: no exchange yet
     try {
-      restClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class);
+      response.body(String.class);
       fail("Expected HttpClientErrorException");
     } catch (HttpClientErrorException thrown) {
       assertThat(SyncClientUtil.shouldRetryOn(thrown)).isFalse();
@@ -276,8 +280,8 @@ class SyncClientUtilIT {
   void autoWrapping_404_throwsOpenTmfClientNotFoundException() {
     get(API_PATH, 1, "{\"message\":\"not found\"}", HttpStatus.NOT_FOUND);
 
-    assertThatThrownBy(() ->
-        autoWrappedRestClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class))
+    var response = autoWrappedRestClient.get().uri(BASE_URL + API_PATH).retrieve();
+    assertThatThrownBy(() -> response.body(String.class))
         .isInstanceOf(OpenTmfClientNotFoundException.class)
         .satisfies(ex -> {
           var nfe = (OpenTmfClientNotFoundException) ex;
@@ -291,8 +295,8 @@ class SyncClientUtilIT {
   void autoWrapping_500_throwsOpenTmfClientResponseException() {
     get(API_PATH, 1, "{\"error\":\"internal\"}", HttpStatus.INTERNAL_SERVER_ERROR);
 
-    assertThatThrownBy(() ->
-        autoWrappedRestClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class))
+    var response = autoWrappedRestClient.get().uri(BASE_URL + API_PATH).retrieve();
+    assertThatThrownBy(() -> response.body(String.class))
         .isInstanceOf(OpenTmfClientResponseException.class)
         .isNotInstanceOf(OpenTmfClientNotFoundException.class)
         .satisfies(ex -> {
@@ -306,8 +310,8 @@ class SyncClientUtilIT {
   void autoWrapping_emptyBody_throwsExceptionWithStatusMessage() {
     get(API_PATH, 1, "", HttpStatus.BAD_REQUEST);
 
-    assertThatThrownBy(() ->
-        autoWrappedRestClient.get().uri(BASE_URL + API_PATH).retrieve().body(String.class))
+    var response = autoWrappedRestClient.get().uri(BASE_URL + API_PATH).retrieve();
+    assertThatThrownBy(() -> response.body(String.class))
         .isInstanceOf(OpenTmfClientResponseException.class)
         .satisfies(ex -> {
           var oex = (OpenTmfClientResponseException) ex;
