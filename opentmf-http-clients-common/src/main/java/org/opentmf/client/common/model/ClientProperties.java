@@ -174,8 +174,8 @@ public class ClientProperties {
 
   /**
    * Optional resilience4j decoration (circuit breaker, bulkhead, reactive time limiter) applied
-   * to every client shape of this id. Disabled by default; requires the resilience4j jars on the
-   * classpath when enabled.
+   * to the client of this id and its bearer-token calls. Disabled by default; requires the
+   * resilience4j jars on the classpath when enabled.
    */
   @Valid
   private ResilienceProperties resilience = new ResilienceProperties();

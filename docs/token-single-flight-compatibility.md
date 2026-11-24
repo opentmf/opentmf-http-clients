@@ -1,5 +1,11 @@
 # One mint per token key: what a client on defaults sees (measured 2026-11-15)
 
+> **Record** of a comparison measured on 2026-11-15, on the unreleased line after 2.5.1 (then
+> `2.5.2-SNAPSHOT`). That line was renumbered 2.6.0 on 2026-11-21, which is what this file calls
+> it, and was never released: it became 3.0.0 (see the CHANGELOG). The behaviour measured here is
+> unchanged in 3.0.0. The harness, `CompatTokenCellsIT`, names no API that 3.0.0 removed and compiles
+> against it (checked at e7c6b01).
+
 Row OTMF-HTTP-CLIENTS-TOKEN-FAILURE-NOT-REPEATED-BY-EVERY-CALLER-1 (ledger #4243). The change makes
 concurrent callers of one token key share one mint, adds the opt-in `bearer-auth.failure-memory`
 (unset by default) and jitters the token call's status retries. The compatibility gate: a client
